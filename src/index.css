@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/*
+ * This build of @tailwindcss/postcss (4.3.3) never generates utility
+ * classes for color families declared in a project @theme block — only
+ * `--color-*` overrides of framework defaults, which also fall back to the
+ * default value. So palette/font are plain CSS custom properties here
+ * instead, and components reference the hex directly via Tailwind's
+ * arbitrary-value syntax (bg-[#a32638], font-display below), which is
+ * generated correctly.
+ */
+:root {
+  --bg: #0e0c0a;
+  --garnet-400: #d97a86;
+  --garnet-500: #bd3347;
+  --garnet-600: #a32638;
+  --garnet-700: #861f2e;
+  --gold-400: #d9a441;
+  --gold-500: #c68f30;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--bg);
+  color: #f5f1eb;
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: "Fraunces", ui-serif, Georgia, serif;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

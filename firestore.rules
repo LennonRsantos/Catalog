@@ -1,0 +1,243 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function friendPairId(otherUid) {
+      return request.auth.uid < otherUid
+        ? request.auth.uid + '_' + otherUid
+        : otherUid + '_' + request.auth.uid;
+    }
+
+    function otherUidIn(friendshipData, me) {
+      return friendshipData.uids[0] == me ? friendshipData.uids[1] : friendshipData.uids[0];
+    }
+
+    // Requester and otherUid are accepted friends. Used only from rules on
+    // OTHER collections (publicProfiles, posts) — get() here always succeeds
+    // regardless of the friendships collection's own read rule.
+    function isFriendOf(otherUid) {
+      return isSignedIn() && request.auth.uid != otherUid &&
+        exists(/databases/$(database)/documents/friendships/$(friendPairId(otherUid))) &&
+        get(/databases/$(database)/documents/friendships/$(friendPairId(otherUid))).data.status == 'accepted';
+    }
+
+    function canReadPost(postId) {
+      let p = get(/databases/$(database)/documents/posts/$(postId)).data;
+      return isSignedIn() && (
+        p.authorUid == request.auth.uid ||
+        p.visibility == 'public' ||
+        (p.visibility == 'friends' && isFriendOf(p.authorUid))
+      );
+    }
+
+    match /profiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // role can only be "admin" on creation if it's this account's own verified
+      // Firebase Auth email — no client can grant itself admin after that.
+      allow create: if isOwner(uid) &&
+        (request.resource.data.role == 'admin'
+          ? request.auth.token.email == 'lennonreis619@gmail.com'
+          : request.resource.data.role == 'user');
+
+      // role is immutable after creation; admins may still edit other fields
+      // (or any other user's document) but never flip role themselves.
+      allow update: if (isOwner(uid) || isAdmin()) &&
+        request.resource.data.role == resource.data.role;
+
+      allow delete: if isOwner(uid) || isAdmin();
+
+      match /catalog/{itemId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+
+      // Denormalized "favorite" (Visto + rating >= 8) items only — never the
+      // full catalog. Same visibility gate as posts/publicProfiles: friends
+      // always see it, strangers only if this profile is public.
+      match /favorites/{itemId} {
+        allow read: if isOwner(uid) || isAdmin() || isFriendOf(uid) ||
+          get(/databases/$(database)/documents/publicProfiles/$(uid)).data.profileVisibility == 'public';
+        allow write: if isOwner(uid) || isAdmin();
+      }
+
+      // Per-recipient inbox. uid here is the RECIPIENT; the doc is written
+      // by whoever performed the action (actorUid), not by uid's own
+      // client — so create must prove the actor is allowed to notify this
+      // recipient: an accepted friend (new_post) or the author of the post
+      // being liked/commented on (like/comment). Real fan-out on purpose —
+      // unlike posts/feed, a notification has no shared canonical copy.
+      match /notifications/{notifId} {
+        allow read, update: if isOwner(uid) || isAdmin();
+
+        allow create: if isSignedIn()
+          && request.resource.data.actorUid == request.auth.uid
+          && request.auth.uid != uid
+          && (
+            (request.resource.data.type == 'new_post' && isFriendOf(uid))
+            ||
+            (request.resource.data.type in ['like', 'comment']
+              && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorUid == uid)
+          );
+
+        // A post's author may clear notifications (in anyone's inbox) that
+        // point at that post, when deleting it — avoids a dead link in a
+        // stranger's notifications the author has no other access to.
+        allow delete: if isOwner(uid) || isAdmin()
+          || (isSignedIn()
+              && get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorUid == request.auth.uid);
+      }
+    }
+
+    // Shareable, cross-user-readable slice of a profile: uid/name/handle/
+    // avatar only, never email. Readable by any signed-in user on purpose —
+    // finding someone by name/handle to send a friend request must work
+    // regardless of their privacy settings (same as a private account still
+    // being searchable on other social apps). profileVisibility instead
+    // gates the CONTENT shown once a profile is opened (see PostCard/posts
+    // rules and PublicProfileModal), not whether the person can be found.
+    match /publicProfiles/{uid} {
+      allow read: if isSignedIn();
+
+      allow write: if (isOwner(uid) || isAdmin()) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.keys().hasOnly(['uid', 'name', 'nameLower', 'handle', 'handleLower', 'avatarUrl', 'profileVisibility']);
+
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // Reserves a TAG (user-editable, e.g. "#abc123") to exactly one uid, so
+    // changing your TAG can be checked for real uniqueness instead of just
+    // trusting the client. Doc id is the TAG lowercased; body is just
+    // { uid }. Created/deleted transactionally by useAuth.ts's
+    // changeHandle — never updated in place except by its own owner
+    // re-writing the same doc (harmless no-op).
+    match /handles/{tagLower} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid &&
+        request.resource.data.uid == request.auth.uid;
+      // resource is null when deleting a TAG that was never actually
+      // reserved (e.g. the random one auto-assigned at signup, before
+      // TAGs became user-editable) — resource.data on null would throw
+      // and deny the whole request, so that case must short-circuit true.
+      allow delete: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid);
+    }
+
+    match /friendships/{pairId} {
+      // Every query the app issues filters uids array-contains myUid, which
+      // pins the field this rule depends on — provable, safe as `allow read`.
+      allow read: if isSignedIn() && request.auth.uid in resource.data.uids;
+
+      allow create: if isSignedIn()
+        && request.resource.data.uids.size() == 2
+        && request.resource.data.uids[0] < request.resource.data.uids[1]
+        && pairId == request.resource.data.uids[0] + '_' + request.resource.data.uids[1]
+        && request.auth.uid in request.resource.data.uids
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      allow update: if isSignedIn() && request.auth.uid in resource.data.uids && (
+        // Only the other party may accept; the requester can't self-accept.
+        (request.auth.uid != resource.data.requestedBy
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.uids == resource.data.uids
+          && request.resource.data.requestedBy == resource.data.requestedBy)
+        ||
+        // Either side may refresh their OWN denormalized name/avatar/TAG
+        // snapshot (e.g. after changing their TAG) — everything else about
+        // the friendship, including the other person's snapshot, must stay
+        // untouched.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profiles'])
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.uids == resource.data.uids
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.profiles[otherUidIn(resource.data, request.auth.uid)]
+             == resource.data.profiles[otherUidIn(resource.data, request.auth.uid)])
+      );
+
+      // Decline an incoming request, cancel an outgoing one, or remove an
+      // existing friend — all the same operation from Firestore's view.
+      allow delete: if isSignedIn() && request.auth.uid in resource.data.uids;
+    }
+
+    match /posts/{postId} {
+      // Every query the app issues filters authorUid (== self, or in
+      // friendUids) plus, for the friend-uid queries, visibility == 'public'
+      // or == 'friends' — each combination pins exactly the fields this rule
+      // depends on, so this is provable as `allow read`.
+      allow read: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.visibility == 'public' ||
+        (resource.data.visibility == 'friends' && isFriendOf(resource.data.authorUid))
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.commentCount == 0
+        && request.resource.data.visibility in ['public', 'friends', 'private'];
+
+      allow update: if isSignedIn() && (
+        // Author edits their own post's content — counters must stay untouched.
+        (isOwner(resource.data.authorUid)
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.likeCount == resource.data.likeCount
+          && request.resource.data.commentCount == resource.data.commentCount
+          && request.resource.data.visibility in ['public', 'friends', 'private'])
+        ||
+        // Like/unlike counter bump, by anyone who can read the post.
+        (canReadPost(postId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount'])
+          && (request.resource.data.likeCount == resource.data.likeCount + 1
+              || request.resource.data.likeCount == resource.data.likeCount - 1))
+        ||
+        // Comment added or deleted (count bump), by anyone who can read the post.
+        (canReadPost(postId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount'])
+          && (request.resource.data.commentCount == resource.data.commentCount + 1
+              || request.resource.data.commentCount == resource.data.commentCount - 1))
+      );
+
+      allow delete: if isOwner(resource.data.authorUid) || isAdmin();
+
+      match /likes/{likerUid} {
+        allow read: if canReadPost(postId);
+        allow create: if isOwner(likerUid) && canReadPost(postId);
+        allow delete: if isOwner(likerUid) || isAdmin();
+      }
+
+      match /comments/{commentId} {
+        allow read: if canReadPost(postId);
+        allow create: if isSignedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && canReadPost(postId);
+        // Only the comment's own author can edit it, and only its text
+        // (plus an editedAt stamp) — author/creation time never change.
+        allow update: if isOwner(resource.data.authorUid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+          && request.resource.data.authorUid == resource.data.authorUid
+          && request.resource.data.authorName == resource.data.authorName
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isSignedIn() && (
+          isOwner(resource.data.authorUid) ||
+          isOwner(get(/databases/$(database)/documents/posts/$(postId)).data.authorUid) ||
+          isAdmin()
+        );
+      }
+    }
+  }
+}
