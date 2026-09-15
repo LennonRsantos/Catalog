@@ -227,7 +227,13 @@ export function useAuth() {
     return unsubscribe;
   }, []);
 
-  async function signUp(name: string, email: string, password: string) {
+  async function signUp(name: string, email: string, password: string, tag: string) {
+    const trimmedTag = tag.trim();
+    if (!isValidTag(trimmedTag)) {
+      throw Object.assign(new Error("invalid-tag"), { code: "app/invalid-tag" });
+    }
+    const tagLower = trimmedTag.toLowerCase();
+
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateFirebaseAuthProfile(cred.user, { displayName: name });
 
@@ -240,12 +246,40 @@ export function useAuth() {
       email: cred.user.email ?? email,
       favoriteGenreIds: [],
       role: ADMIN_EMAILS.includes(cred.user.email ?? "") ? "admin" : "user",
-      handle: generateHandle(name),
+      handle: trimmedTag,
       profileVisibility: DEFAULT_PROFILE_VISIBILITY,
       ratingsMigratedV2: true,
     };
-    await setDoc(profileRef(cred.user.uid), profile);
-    syncPublicProfile(cred.user.uid, profile);
+
+    const uid = cred.user.uid;
+    try {
+      // Reserve the chosen TAG for real (same transaction shape as
+      // changeHandle) instead of trusting the client — two people signing
+      // up with the same TAG at once must not both win it.
+      await runTransaction(db, async (tx) => {
+        const tagSnap = await tx.get(handleDocRef(tagLower));
+        if (tagSnap.exists()) {
+          throw Object.assign(new Error("tag-taken"), { code: "app/tag-taken" });
+        }
+        tx.set(handleDocRef(tagLower), { uid });
+        tx.set(profileRef(uid), profile);
+        tx.set(publicProfileRef(uid), {
+          uid,
+          name: profile.name,
+          nameLower: profile.name.trim().toLowerCase(),
+          handle: trimmedTag,
+          handleLower: tagLower,
+          avatarUrl: null,
+          profileVisibility: resolvePrivacy(profile).profileVisibility,
+        });
+      });
+    } catch (err) {
+      // The Auth account exists but got no profile — roll it back so a
+      // taken-TAG failure doesn't leave an orphaned, profile-less account.
+      await deleteUser(cred.user).catch(() => {});
+      throw err;
+    }
+
     setProfile(profile);
   }
 

@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Clapperboard, Eye, EyeOff, Loader2, Mail } fro
 import { getBackdropUrl } from "../services/tmdb";
 import { translateAuthError } from "../services/firebase";
 import { useAuthContext } from "../contexts/AuthContext";
-import { isValidEmail } from "../utils/validation";
+import { isValidEmail, isValidTag } from "../utils/validation";
 
 interface AuthScreenProps {
   backdropPath?: string | null;
@@ -35,6 +35,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
   const { signUp, logIn, logInWithGoogle, resetPassword } = useAuthContext();
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
+  const [tag, setTag] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -56,6 +57,8 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
       return null;
     }
     if (mode === "signup" && name.trim().length < 2) return "Informe seu nome completo.";
+    if (mode === "signup" && !isValidTag(tag))
+      return "Informe uma TAG válida: # seguido de 3 a 20 letras, números ou _.";
     if (!isValidEmail(email)) return "Informe um e-mail válido.";
     if (password.length < 6) return "A senha deve ter ao menos 6 caracteres.";
     return null;
@@ -74,7 +77,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
 
     try {
       if (mode === "signup") {
-        await signUp(name.trim(), email.trim(), password);
+        await signUp(name.trim(), email.trim(), password, tag.trim());
       } else if (mode === "login") {
         await logIn(email.trim(), password);
       } else {
@@ -214,6 +217,30 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
                     autoFocus
                     className="w-full rounded-lg border border-stone-800 bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
                   />
+                </div>
+              )}
+
+              {mode === "signup" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400" htmlFor="signup-tag">
+                    TAG
+                  </label>
+                  <input
+                    id="signup-tag"
+                    value={tag}
+                    onChange={(e) => {
+                      setTag(e.target.value);
+                      clearErrorOnEdit();
+                    }}
+                    placeholder="#suatag"
+                    autoComplete="off"
+                    spellCheck={false}
+                    required
+                    className="w-full rounded-lg border border-stone-800 bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
+                  />
+                  <p className="mt-1.5 text-[11px] text-stone-500">
+                    Assim seus amigos te encontram. # seguido de 3 a 20 letras, números ou _.
+                  </p>
                 </div>
               )}
 

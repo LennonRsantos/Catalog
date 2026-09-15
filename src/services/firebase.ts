@@ -55,6 +55,10 @@ export function translateAuthError(err: unknown): string {
       return "Erro interno do servidor. Tente novamente em instantes.";
     case "auth/requires-recent-login":
       return "Por segurança, confirme sua senha atual pra continuar.";
+    case "app/tag-taken":
+      return "Essa TAG já está em uso. Escolha outra.";
+    case "app/invalid-tag":
+      return "TAG inválida. Use # seguido de 3 a 20 letras, números ou _.";
     default:
       return "Não foi possível concluir. Tente novamente.";
   }

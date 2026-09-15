@@ -131,7 +131,7 @@ export function ProfileModal({
                 <Loader2 className="animate-spin" size={14} /> Carregando gêneros…
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2.5">
                 {genres.map((genre) => {
                   const selected = favoriteGenreIds.includes(genre.id);
                   return (
@@ -139,7 +139,7 @@ export function ProfileModal({
                       key={genre.id}
                       type="button"
                       onClick={() => toggleGenre(genre.id)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-medium transition ${
                         selected
                           ? "border-[#a32638] bg-[#a32638] text-white"
                           : "border-stone-800 bg-stone-950 text-stone-400 hover:border-stone-700 hover:text-white"

@@ -6,8 +6,8 @@ export type AppTab = "programas" | "feed" | "amigos" | "explorar" | "dashboard";
 export const APP_TABS: { id: AppTab; label: string; icon: LucideIcon }[] = [
   { id: "programas", label: "Programas", icon: ListVideo },
   { id: "feed", label: "Feed", icon: Rss },
-  { id: "amigos", label: "Amigos", icon: Users },
   { id: "explorar", label: "Explorar", icon: Compass },
+  { id: "amigos", label: "Amigos", icon: Users },
   { id: "dashboard", label: "Estatísticas", icon: BarChart3 },
 ];
 

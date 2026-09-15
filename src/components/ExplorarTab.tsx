@@ -125,7 +125,7 @@ export function ExplorarTab({
           onMouseMove={handleGenreMouseMove}
           onMouseUp={stopGenreDrag}
           onMouseLeave={stopGenreDrag}
-          className="no-scrollbar flex cursor-grab gap-2 overflow-x-auto scroll-smooth select-none active:cursor-grabbing"
+          className="no-scrollbar flex cursor-grab gap-2.5 overflow-x-auto scroll-smooth select-none active:cursor-grabbing"
         >
           {genres.map((genre) => {
             const selected = selectedGenreIds.includes(genre.id);
@@ -133,7 +133,7 @@ export function ExplorarTab({
               <button
                 key={genre.id}
                 onClick={() => onToggleGenre(genre.id)}
-                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-xs font-medium transition ${
                   selected
                     ? "border-[#a32638] bg-[#a32638] text-white"
                     : "border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:text-white"

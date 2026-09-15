@@ -40,6 +40,17 @@ a,
   touch-action: manipulation;
 }
 
+/* iOS Safari auto-zooms the whole page when a focused form field has
+   font-size < 16px, regardless of the viewport's user-scalable setting —
+   the only real fix is keeping every field at 16px. Applies at every
+   breakpoint (not just phone widths) because iPad Safari hits the same
+   bug — its viewport is often 768-1024px, well past a phone-only gate. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
 ::-webkit-scrollbar {
   height: 8px;
   width: 8px;

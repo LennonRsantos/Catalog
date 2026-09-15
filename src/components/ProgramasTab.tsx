@@ -173,8 +173,6 @@ export function ProgramasTab({
         </p>
       </div>
 
-      <StatusTabs active={activeStatus} onChange={selectStatus} counts={counts} />
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
@@ -204,13 +202,15 @@ export function ProgramasTab({
         )}
       </div>
 
+      <StatusTabs active={activeStatus} onChange={selectStatus} counts={counts} />
+
       <div className="relative">
-        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+        <div className="no-scrollbar flex gap-2.5 overflow-x-auto">
           {filterChips.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setProgFilter(key)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+              className={`flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-medium transition ${
                 progFilter === key
                   ? "border-[#a32638] bg-[#a32638]/10 text-[#bd3347]"
                   : "border-stone-800 bg-stone-900 text-stone-400 hover:text-white"
