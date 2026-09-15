@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { User } from "../types";
 import { useAuthContext } from "../contexts/AuthContext";
-import { translateAuthError } from "../services/firebase";
+import { translateAuthError } from "../services/supabase";
 import {
   AvatarUploadError,
   CoverUploadError,
@@ -66,7 +66,7 @@ function Feedback({ state }: { state: SectionState }) {
 }
 
 export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDataModalProps) {
-  const { firebaseUser, authProvider, changeEmail, changePassword, changeHandle, deleteAccount } =
+  const { authUser, authProvider, changeEmail, changePassword, changeHandle, deleteAccount } =
     useAuthContext();
 
   const [name, setName] = useState(profile.name);
@@ -91,17 +91,14 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
 
   const [emailOpen, setEmailOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
-  const [emailPassword, setEmailPassword] = useState("");
   const [emailState, setEmailState] = useState<SectionState>(IDLE);
 
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordState, setPasswordState] = useState<SectionState>(IDLE);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteState, setDeleteState] = useState<SectionState>(IDLE);
 
@@ -125,15 +122,12 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
     setTagState(IDLE);
     setEmailOpen(false);
     setNewEmail("");
-    setEmailPassword("");
     setEmailState(IDLE);
     setPasswordOpen(false);
-    setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
     setPasswordState(IDLE);
     setDeleteOpen(false);
-    setDeletePassword("");
     setDeleteConfirmText("");
     setDeleteState(IDLE);
   }, [open, profile]);
@@ -200,8 +194,8 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
     setMainState({ submitting: true, error: null, success: null });
     try {
       let avatarUrl = profile.avatarUrl;
-      if (avatarFile && firebaseUser) {
-        avatarUrl = await uploadAvatarFile(firebaseUser.uid, avatarFile);
+      if (avatarFile && authUser) {
+        avatarUrl = await uploadAvatarFile(authUser.uid, avatarFile);
         deleteAvatarFile(profile.avatarUrl).catch(() => {});
       } else if (avatarRemoved) {
         deleteAvatarFile(profile.avatarUrl).catch(() => {});
@@ -209,8 +203,8 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
       }
 
       let coverUrl = profile.coverUrl;
-      if (coverFile && firebaseUser) {
-        coverUrl = await uploadCoverFile(firebaseUser.uid, coverFile);
+      if (coverFile && authUser) {
+        coverUrl = await uploadCoverFile(authUser.uid, coverFile);
         deleteCoverFile(profile.coverUrl).catch(() => {});
       } else if (coverRemoved) {
         deleteCoverFile(profile.coverUrl).catch(() => {});
@@ -264,21 +258,16 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
       setEmailState({ submitting: false, error: "Informe um e-mail válido.", success: null });
       return;
     }
-    if (authProvider === "password" && !emailPassword) {
-      setEmailState({ submitting: false, error: "Confirme sua senha atual.", success: null });
-      return;
-    }
 
     setEmailState({ submitting: true, error: null, success: null });
     try {
-      await changeEmail(newEmail.trim(), emailPassword);
+      await changeEmail(newEmail.trim());
       setEmailState({
         submitting: false,
         error: null,
         success: `Enviamos um link de confirmação pra ${newEmail.trim()}. Seu e-mail só muda depois que você confirmar por lá.`,
       });
       setNewEmail("");
-      setEmailPassword("");
     } catch (err) {
       setEmailState({ submitting: false, error: translateAuthError(err), success: null });
     }
@@ -301,9 +290,8 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
 
     setPasswordState({ submitting: true, error: null, success: null });
     try {
-      await changePassword(currentPassword, newPassword);
+      await changePassword(newPassword);
       setPasswordState({ submitting: false, error: null, success: "Senha alterada com sucesso." });
-      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setTimeout(() => setPasswordOpen(false), 1500);
@@ -320,8 +308,8 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
 
     setDeleteState({ submitting: true, error: null, success: null });
     try {
-      await deleteAccount(deletePassword);
-      // onAuthStateChanged cuida do resto: a sessão cai e o app volta pra AuthScreen sozinho.
+      await deleteAccount();
+      // onAuthStateChange cuida do resto: a sessão cai e o app volta pra AuthScreen sozinho.
     } catch (err) {
       setDeleteState({ submitting: false, error: translateAuthError(err), success: null });
     }
@@ -598,18 +586,6 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
                   required
                   className={inputClass}
                 />
-                {authProvider === "password" && (
-                  <input
-                    type="password"
-                    value={emailPassword}
-                    onChange={(e) => setEmailPassword(e.target.value)}
-                    placeholder="Senha atual"
-                    aria-label="Senha atual"
-                    autoComplete="current-password"
-                    required
-                    className={inputClass}
-                  />
-                )}
                 <Feedback state={emailState} />
                 <button
                   type="submit"
@@ -649,16 +625,6 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
             ) : (
               passwordOpen && (
                 <form onSubmit={handleChangePassword} className="mt-3 space-y-2 border-t border-stone-800 pt-3">
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Senha atual"
-                    aria-label="Senha atual"
-                    autoComplete="current-password"
-                    required
-                    className={inputClass}
-                  />
                   <input
                     type="password"
                     value={newPassword}
@@ -713,17 +679,6 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
               <p className="text-xs text-stone-400">
                 Isso apaga sua conta, catálogo e perfil permanentemente. Não tem como desfazer.
               </p>
-              {authProvider === "password" && (
-                <input
-                  type="password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Sua senha atual"
-                  aria-label="Sua senha atual"
-                  autoComplete="current-password"
-                  className={inputClass}
-                />
-              )}
               <input
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
@@ -740,7 +695,6 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
                   onClick={() => {
                     setDeleteOpen(false);
                     setDeleteState(IDLE);
-                    setDeletePassword("");
                     setDeleteConfirmText("");
                   }}
                   disabled={deleteState.submitting}

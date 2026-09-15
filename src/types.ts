@@ -45,19 +45,13 @@ export interface User {
   birthdate?: string; // ISO "YYYY-MM-DD"
   // Stable handle assigned at signup (e.g. "@L7nnoca") for finding this
   // person, sending friend requests, and @mentioning them in posts/
-  // comments — unlike name, it's unique-ish and never changes. Optional so
-  // profiles predating this feature keep working until backfilled on next
-  // login (see useAuth.ts).
+  // comments — unique (case-insensitive) and user-changeable.
   handle?: string;
   // Privacy — optional so existing profiles predating this feature keep working.
   // Always read through resolvePrivacy(profile), never these fields directly.
   profileVisibility?: ProfileVisibility;
   feedVisibility?: PostVisibility;
   autoShareOnWatched?: boolean;
-  // One-time migration marker: ratings moved from a 0-5 to a 0-10 scale.
-  // See useAuth.ts's ensureProfile — set once existing catalog items/posts
-  // have been multiplied by 2, so it never runs twice for the same account.
-  ratingsMigratedV2?: boolean;
 }
 
 export const DEFAULT_PROFILE_VISIBILITY: ProfileVisibility = "friends";

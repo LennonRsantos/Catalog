@@ -6,7 +6,6 @@ import { PostCard } from "./PostCard";
 
 interface FeedTabProps {
   uid: string;
-  currentUserInfo: { name: string; avatarUrl?: string };
   posts: Post[];
   feedLoading: boolean;
   trending: {
@@ -23,7 +22,6 @@ interface FeedTabProps {
 
 export function FeedTab({
   uid,
-  currentUserInfo,
   posts,
   feedLoading,
   trending,
@@ -79,7 +77,6 @@ export function FeedTab({
               key={post.id}
               post={post}
               currentUid={uid}
-              currentUserInfo={currentUserInfo}
               mentionCandidates={mentionCandidates}
               onOpenProfile={onOpenProfile}
               onOpenDetails={onOpenDetails}

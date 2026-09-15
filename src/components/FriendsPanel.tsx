@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, limit, orderBy, query, startAt } from "firebase/firestore";
 import { Check, Loader2, Search, User as UserIcon, UserMinus, UserPlus, X } from "lucide-react";
-import { db } from "../services/firebase";
+import { supabase } from "../services/supabase";
 import type { Friendship, PublicProfile } from "../types";
+import type { Tables } from "../services/database.types";
 
 interface FriendsPanelProps {
   uid: string;
@@ -12,11 +12,24 @@ interface FriendsPanelProps {
   outgoing: Friendship[];
   otherUid: (f: Friendship) => string;
   friendshipWith: (targetUid: string) => Friendship | undefined;
-  onSendRequest: (targetUid: string, targetProfile: { name: string; avatarUrl?: string; handle?: string }) => void;
+  onSendRequest: (targetUid: string) => void;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
   onRemove: (id: string) => void;
   onOpenProfile: (uid: string) => void;
+}
+
+function rowToPublicProfile(row: Tables<"public_profiles">): PublicProfile {
+  return {
+    uid: row.uid as string,
+    name: row.name as string,
+    nameLower: row.name_lower as string,
+    handle: row.handle as string,
+    handleLower: row.handle_lower as string,
+    avatarUrl: row.avatar_url ?? undefined,
+    coverUrl: row.cover_url ?? undefined,
+    profileVisibility: row.profile_visibility as PublicProfile["profileVisibility"],
+  };
 }
 
 async function searchPublicProfiles(term: string, excludeUid: string): Promise<PublicProfile[]> {
@@ -24,23 +37,23 @@ async function searchPublicProfiles(term: string, excludeUid: string): Promise<P
   if (!trimmed) return [];
 
   const byHandle = trimmed.startsWith("@");
-  // handleLower is stored WITH the "@" (e.g. "@l7nnoca"), so the cursor
-  // must keep it too — stripping it here used to make startAt() position
-  // past every handle (since "@" sorts before any letter), silently
-  // returning nothing for every handle search.
   const lower = trimmed.toLowerCase();
   if (!lower) return [];
 
   // Findable regardless of profileVisibility — private accounts must still
   // be reachable by search to receive a friend request, same as on other
-  // social apps. Privacy only gates content, not discoverability.
-  const field = byHandle ? "handleLower" : "nameLower";
-  const q = query(collection(db, "publicProfiles"), orderBy(field), startAt(lower), limit(30));
-  const snap = await getDocs(q);
-  return snap.docs
-    .map((d) => d.data() as PublicProfile)
-    .filter((p) => p.uid !== excludeUid && (byHandle ? p.handleLower : p.nameLower).startsWith(lower))
-    .slice(0, 15);
+  // social apps. Privacy only gates content, not discoverability. The
+  // *_lower columns have a text_pattern_ops index, so this prefix ILIKE
+  // is an indexed scan, not a full table scan.
+  const field = byHandle ? "handle_lower" : "name_lower";
+  const { data, error } = await supabase
+    .from("public_profiles")
+    .select("*")
+    .ilike(field, `${lower}%`)
+    .neq("uid", excludeUid)
+    .limit(15);
+  if (error) return [];
+  return (data ?? []).map(rowToPublicProfile);
 }
 
 function AvatarCircle({ name, avatarUrl, size = 9 }: { name: string; avatarUrl?: string; size?: number }) {
@@ -136,9 +149,7 @@ export function FriendsPanel({
 
                     {!existing && (
                       <button
-                        onClick={() =>
-                          onSendRequest(result.uid, { name: result.name, avatarUrl: result.avatarUrl, handle: result.handle })
-                        }
+                        onClick={() => onSendRequest(result.uid)}
                         className="flex shrink-0 items-center gap-1 rounded-full bg-[#a32638] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#bd3347]"
                       >
                         <UserPlus size={12} /> Adicionar

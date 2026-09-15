@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, CheckCircle2, Clapperboard, Eye, EyeOff, Loader2, Mail } from "lucide-react";
 import { getBackdropUrl } from "../services/tmdb";
-import { translateAuthError } from "../services/firebase";
+import { translateAuthError } from "../services/supabase";
 import { useAuthContext } from "../contexts/AuthContext";
 import { isValidEmail, isValidTag } from "../utils/validation";
 

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
 import {
   Check,
   Clapperboard,
@@ -13,7 +12,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { db } from "../services/firebase";
+import { supabase } from "../services/supabase";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import type { FavoriteEntry, Friendship, Genre, PublicProfile } from "../types";
 import { DEFAULT_COVER } from "../types";
@@ -25,7 +24,7 @@ interface PublicProfileModalProps {
   genres: Genre[];
   friendshipWith: (targetUid: string) => Friendship | undefined;
   isRequestedByMe: (f: Friendship) => boolean;
-  onSendRequest: (targetUid: string, targetProfile: { name: string; avatarUrl?: string; handle?: string }) => void;
+  onSendRequest: (targetUid: string) => void;
   onAccept: (id: string) => void;
   onCancelOrDecline: (id: string) => void;
   onRemove: (id: string) => void;
@@ -33,22 +32,31 @@ interface PublicProfileModalProps {
   onOpenDetails: (target: DetailsTarget) => void;
 }
 
-// Own doc so a friend (or anyone, if this profile is public) can read genre
-// preferences without profiles/{uid} itself being readable — see
-// firestore.rules's profiles/{uid}/publicMeta/genres and useAuth.ts's
-// syncGenrePrefs.
+// Reads the public_genre_prefs view — friends-or-public gated (see the
+// migrations); an empty/zero-row result reads the same as "not visible to
+// me," same honest-enough fallback as the favorites fetch below.
 async function fetchGenrePrefs(uid: string): Promise<number[]> {
-  const snap = await getDoc(doc(db, "profiles", uid, "publicMeta", "genres"));
-  return snap.exists() ? ((snap.data().genreIds as number[]) ?? []) : [];
+  const { data } = await supabase.from("public_genre_prefs").select("favorite_genre_ids").eq("uid", uid).maybeSingle();
+  return data?.favorite_genre_ids ?? [];
 }
 
-// Sorted client-side (not via Firestore orderBy) so unranked favorites
+// Sorted client-side (not via a DB orderBy) so unranked favorites
 // (favoriteRank undefined — 11th+ ones, or never assigned a slot) are still
-// included instead of being excluded by an orderBy on a missing field.
+// included instead of being excluded by an orderBy on a null column.
 async function fetchTop10(uid: string, type: "Filme" | "Série"): Promise<FavoriteEntry[]> {
-  const q = query(collection(db, "profiles", uid, "favorites"), where("type", "==", type));
-  const snap = await getDocs(q);
-  const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FavoriteEntry);
+  const { data, error } = await supabase.from("favorites_public").select("*").eq("owner_uid", uid).eq("type", type);
+  if (error || !data) return [];
+  const entries: FavoriteEntry[] = data.map((row) => ({
+    id: row.id as string,
+    tmdbId: row.tmdb_id ?? undefined,
+    mediaType: row.media_type as FavoriteEntry["mediaType"],
+    type: row.type as FavoriteEntry["type"],
+    title: row.title as string,
+    coverUrl: row.cover_url as string,
+    rating: Number(row.rating),
+    ratedAt: row.rated_at ? new Date(row.rated_at).getTime() : 0,
+    favoriteRank: row.favorite_rank ?? undefined,
+  }));
   entries.sort((a, b) => {
     const rankA = a.favoriteRank ?? Infinity;
     const rankB = b.favoriteRank ?? Infinity;
@@ -146,11 +154,38 @@ export function PublicProfileModal({
 
   useEffect(() => {
     if (!targetUid) return;
+    let cancelled = false;
     setLoading(true);
-    getDoc(doc(db, "publicProfiles", targetUid))
-      .then((snap) => setProfile(snap.exists() ? (snap.data() as PublicProfile) : null))
-      .catch(() => setProfile(null))
-      .finally(() => setLoading(false));
+
+    async function load() {
+      try {
+        const { data } = await supabase.from("public_profiles").select("*").eq("uid", targetUid as string).maybeSingle();
+        if (cancelled) return;
+        setProfile(
+          data
+            ? {
+                uid: data.uid as string,
+                name: data.name as string,
+                nameLower: data.name_lower as string,
+                handle: data.handle as string,
+                handleLower: data.handle_lower as string,
+                avatarUrl: data.avatar_url ?? undefined,
+                coverUrl: data.cover_url ?? undefined,
+                profileVisibility: data.profile_visibility as PublicProfile["profileVisibility"],
+              }
+            : null
+        );
+      } catch {
+        if (!cancelled) setProfile(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [targetUid]);
 
   useEffect(() => {
@@ -247,13 +282,7 @@ export function PublicProfileModal({
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {!friendship && (
                     <button
-                      onClick={() =>
-                        onSendRequest(targetUid, {
-                          name: profile.name,
-                          avatarUrl: profile.avatarUrl,
-                          handle: profile.handle,
-                        })
-                      }
+                      onClick={() => onSendRequest(targetUid)}
                       className="flex items-center gap-1.5 rounded-full bg-[#a32638] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#bd3347]"
                     >
                       <UserPlus size={13} /> Adicionar

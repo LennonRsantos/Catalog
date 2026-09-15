@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, updateDoc, writeBatch } from "firebase/firestore";
-import { db } from "../services/firebase";
-import type { AppNotification } from "../types";
+import { supabase } from "../services/supabase";
+import type { AppNotification, NotificationType } from "../types";
+import type { Tables } from "../services/database.types";
 
-function notificationsRef(uid: string) {
-  return collection(db, "profiles", uid, "notifications");
+type NotificationRow = Tables<"notifications">;
+
+function rowToNotification(row: NotificationRow): AppNotification {
+  return {
+    id: row.id,
+    type: row.type as NotificationType,
+    actorUid: row.actor_uid,
+    actorName: row.actor_name,
+    actorAvatarUrl: row.actor_avatar_url ?? undefined,
+    postId: row.post_id,
+    postTitle: row.post_title,
+    postCoverUrl: row.post_cover_url,
+    commentId: row.comment_id ?? undefined,
+    commentPreview: row.comment_preview ?? undefined,
+    createdAt: new Date(row.created_at).getTime(),
+    read: row.read,
+  };
 }
 
 export function useNotifications(uid: string | null, limitCount = 50) {
@@ -19,37 +34,68 @@ export function useNotifications(uid: string | null, limitCount = 50) {
     }
 
     setLoading(true);
-    const q = query(notificationsRef(uid), orderBy("createdAt", "desc"), limit(limitCount));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AppNotification));
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsubscribe;
+    let cancelled = false;
+
+    async function refetch() {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("recipient_uid", uid as string)
+        .order("created_at", { ascending: false })
+        .limit(limitCount);
+      if (cancelled) return;
+      if (error) {
+        console.error("Falha ao carregar notificações:", error);
+      } else {
+        setNotifications((data ?? []).map(rowToNotification));
+      }
+      setLoading(false);
+    }
+
+    refetch();
+
+    const channel = supabase
+      .channel(`notifications:${uid}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `recipient_uid=eq.${uid}` },
+        () => refetch()
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [uid, limitCount]);
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
   async function markRead(id: string) {
     if (!uid) return;
-    await updateDoc(doc(notificationsRef(uid), id), { read: true });
+    const { error } = await supabase.from("notifications").update({ read: true }).eq("id", id).eq("recipient_uid", uid);
+    if (error) throw error;
   }
 
   async function markAllRead() {
     if (!uid) return;
     const unread = notifications.filter((n) => !n.read);
     if (unread.length === 0) return;
-    const batch = writeBatch(db);
-    for (const n of unread) batch.update(doc(notificationsRef(uid), n.id), { read: true });
-    await batch.commit();
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read: true })
+      .in(
+        "id",
+        unread.map((n) => n.id)
+      )
+      .eq("recipient_uid", uid);
+    if (error) throw error;
   }
 
   async function deleteNotification(id: string) {
     if (!uid) return;
-    await deleteDoc(doc(notificationsRef(uid), id));
+    const { error } = await supabase.from("notifications").delete().eq("id", id).eq("recipient_uid", uid);
+    if (error) throw error;
   }
 
   return { notifications, loading, unreadCount, markRead, markAllRead, deleteNotification };

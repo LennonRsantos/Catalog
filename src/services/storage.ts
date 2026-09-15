@@ -1,16 +1,16 @@
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "./firebase";
+import { supabase } from "./supabase";
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const UPLOAD_TIMEOUT_MS = 15000;
 
 export class AvatarUploadError extends Error {}
+export class CoverUploadError extends Error {}
 
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
   message: string,
-  ErrorClass: new (message: string) => Error = AvatarUploadError
+  ErrorClass: new (message: string) => Error
 ): Promise<T> {
   return Promise.race([
     promise,
@@ -18,58 +18,78 @@ function withTimeout<T>(
   ]);
 }
 
-export async function uploadAvatarFile(uid: string, file: File): Promise<string> {
+async function uploadImage(
+  bucket: "avatars" | "covers",
+  uid: string,
+  file: File,
+  maxBytes: number,
+  timeoutMessage: string,
+  ErrorClass: new (message: string) => Error
+): Promise<string> {
   if (!file.type.startsWith("image/")) {
-    throw new AvatarUploadError("Selecione um arquivo de imagem.");
+    throw new ErrorClass("Selecione um arquivo de imagem.");
   }
-  if (file.size > MAX_AVATAR_BYTES) {
-    throw new AvatarUploadError("Imagem muito grande. Máximo de 5MB.");
+  if (file.size > maxBytes) {
+    throw new ErrorClass(`Imagem muito grande. Máximo de ${Math.round(maxBytes / (1024 * 1024))}MB.`);
   }
 
-  const path = `avatars/${uid}/${Date.now()}-${file.name}`;
-  const fileRef = ref(storage, path);
-  const timeoutMessage = "Envio de foto indisponível no momento. Tente novamente mais tarde.";
-  await withTimeout(uploadBytes(fileRef, file, { contentType: file.type }), UPLOAD_TIMEOUT_MS, timeoutMessage);
-  return withTimeout(getDownloadURL(fileRef), UPLOAD_TIMEOUT_MS, timeoutMessage);
+  const path = `${uid}/${Date.now()}-${file.name}`;
+  const { error } = await withTimeout(
+    supabase.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false }),
+    UPLOAD_TIMEOUT_MS,
+    timeoutMessage,
+    ErrorClass
+  );
+  if (error) throw new ErrorClass(timeoutMessage);
+
+  return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
 
-// Best-effort: an old avatar being gone already, or the URL not pointing at
+// Best-effort: an old file being gone already, or the URL not pointing at
 // our own bucket (e.g. a leftover manually-typed URL from before uploads
-// existed), should never block removing/replacing the avatar in the profile.
-export async function deleteAvatarFile(url: string | undefined): Promise<void> {
-  if (!url || !url.includes("firebasestorage")) return;
+// existed, or a Firebase Storage URL left over from before the migration),
+// should never block removing/replacing the file in the profile.
+async function deleteImage(bucket: "avatars" | "covers", url: string | undefined): Promise<void> {
+  if (!url) return;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return;
+  const path = url.slice(idx + marker.length);
   try {
-    await deleteObject(ref(storage, url));
+    await supabase.storage.from(bucket).remove([path]);
   } catch (err) {
-    console.warn("Falha ao remover avatar antigo (ignorado):", err);
+    console.warn(`Falha ao remover ${bucket} antigo (ignorado):`, err);
   }
+}
+
+export function uploadAvatarFile(uid: string, file: File): Promise<string> {
+  return uploadImage(
+    "avatars",
+    uid,
+    file,
+    MAX_AVATAR_BYTES,
+    "Envio de foto indisponível no momento. Tente novamente mais tarde.",
+    AvatarUploadError
+  );
+}
+
+export function deleteAvatarFile(url: string | undefined): Promise<void> {
+  return deleteImage("avatars", url);
 }
 
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 
-export class CoverUploadError extends Error {}
-
-export async function uploadCoverFile(uid: string, file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) {
-    throw new CoverUploadError("Selecione um arquivo de imagem.");
-  }
-  if (file.size > MAX_COVER_BYTES) {
-    throw new CoverUploadError("Imagem muito grande. Máximo de 8MB.");
-  }
-
-  const path = `covers/${uid}/${Date.now()}-${file.name}`;
-  const fileRef = ref(storage, path);
-  const timeoutMessage = "Envio de capa indisponível no momento. Tente novamente mais tarde.";
-  await withTimeout(uploadBytes(fileRef, file, { contentType: file.type }), UPLOAD_TIMEOUT_MS, timeoutMessage, CoverUploadError);
-  return withTimeout(getDownloadURL(fileRef), UPLOAD_TIMEOUT_MS, timeoutMessage, CoverUploadError);
+export function uploadCoverFile(uid: string, file: File): Promise<string> {
+  return uploadImage(
+    "covers",
+    uid,
+    file,
+    MAX_COVER_BYTES,
+    "Envio de capa indisponível no momento. Tente novamente mais tarde.",
+    CoverUploadError
+  );
 }
 
-// Same reasoning as deleteAvatarFile — best-effort, never blocks the save.
-export async function deleteCoverFile(url: string | undefined): Promise<void> {
-  if (!url || !url.includes("firebasestorage")) return;
-  try {
-    await deleteObject(ref(storage, url));
-  } catch (err) {
-    console.warn("Falha ao remover capa antiga (ignorado):", err);
-  }
+export function deleteCoverFile(url: string | undefined): Promise<void> {
+  return deleteImage("covers", url);
 }

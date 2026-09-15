@@ -5,7 +5,7 @@ import { resolvePrivacy } from "./types";
 import { useAuthContext } from "./contexts/AuthContext";
 import { useCatalog } from "./hooks/useCatalog";
 import { useFriends } from "./hooks/useFriends";
-import { useFeed, createPost, notifyFriendsOfNewPost, notifyMentions, mentionTargetUids } from "./hooks/useFeed";
+import { useFeed, publishPost } from "./hooks/useFeed";
 import { useNotifications } from "./hooks/useNotifications";
 import { extractMentions, type MentionCandidate } from "./utils/mentions";
 import { normalizeHandle } from "./utils/handle";
@@ -41,9 +41,9 @@ import {
 type TmdbMediaItem = TmdbMovie & { media_type: "movie" | "tv" };
 
 export default function App() {
-  const { firebaseUser, profile, loading: authLoading, saveProfile, logOut } = useAuthContext();
+  const { authUser, profile, loading: authLoading, saveProfile, logOut } = useAuthContext();
   const { items, saveItem, updateStatus, updateRating, toggleFavorite, moveFavoriteRank, deleteItem, restoreItems } = useCatalog(
-    firebaseUser?.uid ?? null
+    authUser?.uid ?? null
   );
 
   const [activeTab, setActiveTab] = useState<AppTab>("explorar");
@@ -82,10 +82,10 @@ export default function App() {
     acceptRequest: acceptFriendRequest,
     declineRequest: declineFriendRequest,
     removeFriend,
-  } = useFriends(firebaseUser?.uid ?? null);
+  } = useFriends(authUser?.uid ?? null);
 
   const { posts: feedPosts, loading: feedLoading, trending: feedTrending } = useFeed(
-    firebaseUser?.uid ?? null,
+    authUser?.uid ?? null,
     friendUids
   );
 
@@ -109,7 +109,7 @@ export default function App() {
     notifications,
     markRead: markNotificationRead,
     markAllRead: markAllNotificationsRead,
-  } = useNotifications(firebaseUser?.uid ?? null);
+  } = useNotifications(authUser?.uid ?? null);
 
   const [trending, setTrending] = useState<TmdbMediaItem[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
@@ -151,10 +151,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (firebaseUser && profile && profile.favoriteGenreIds.length === 0) {
+    if (authUser && profile && profile.favoriteGenreIds.length === 0) {
       setProfileModalOpen(true);
     }
-  }, [firebaseUser, profile]);
+  }, [authUser, profile]);
 
   function likedGenreIdsFor(mediaType: MediaType): number[] {
     const freq = new Map<number, number>();
@@ -322,7 +322,7 @@ export default function App() {
   }, [tmdbResults, typeFilter]);
 
   function attemptShareOnWatched(item: MediaItem, prevStatus: MediaStatus | undefined, watchedWith: WatchedWith = NO_WATCHED_WITH) {
-    if (!profile || !firebaseUser) return;
+    if (!profile || !authUser) return;
     if (prevStatus === "Visto" || item.status !== "Visto") return; // only on the transition INTO Visto
 
     const { autoShareOnWatched, feedVisibility } = resolvePrivacy(profile);
@@ -344,7 +344,7 @@ export default function App() {
     review = item.review,
     watchedWith: WatchedWith = NO_WATCHED_WITH
   ): Promise<string> {
-    if (!firebaseUser || !profile) throw new Error("not-authenticated");
+    if (!authUser || !profile) throw new Error("not-authenticated");
     const fromText = extractMentions(review, mentionCandidates);
     const mentionUids = new Set(fromText.mentions.map((m) => m.uid));
     const mentions = [...fromText.mentions];
@@ -355,10 +355,10 @@ export default function App() {
       }
     }
     const mentionsAll = fromText.mentionsAll || watchedWith.mentionsAll;
-    const postId = await createPost({
-      authorUid: firebaseUser.uid,
-      authorName: profile.name,
-      authorAvatarUrl: profile.avatarUrl,
+
+    // new_post + @mention notifications happen server-side inside the RPC,
+    // atomically with the insert — nothing else to trigger here.
+    return publishPost({
       tmdbId: item.tmdbId,
       mediaType: item.type === "Série" ? "tv" : "movie",
       type: item.type,
@@ -367,31 +367,9 @@ export default function App() {
       rating,
       review,
       visibility,
-      createdAt: Date.now(),
-      likeCount: 0,
-      commentCount: 0,
       mentions,
       mentionsAll,
     });
-
-    if (visibility !== "private") {
-      notifyFriendsOfNewPost(
-        friendUids,
-        postId,
-        { uid: firebaseUser.uid, name: profile.name, avatarUrl: profile.avatarUrl },
-        { title: item.title, coverUrl: item.coverUrl }
-      ).catch((err) => console.warn("Falha ao notificar amigos do novo post:", err));
-
-      notifyMentions(
-        mentionTargetUids(mentions, mentionsAll, mentionCandidates.map((c) => c.uid)),
-        new Set(),
-        postId,
-        { uid: firebaseUser.uid, name: profile.name, avatarUrl: profile.avatarUrl },
-        { title: item.title, coverUrl: item.coverUrl }
-      ).catch((err) => console.warn("Falha ao notificar menções do novo post:", err));
-    }
-
-    return postId;
   }
 
   function handleSave(item: MediaItem, watchedWith: WatchedWith = NO_WATCHED_WITH) {
@@ -478,20 +456,13 @@ export default function App() {
     saveProfile(user).catch((err) => console.error("Falha ao salvar perfil:", err));
   }
 
-  function handleSendFriendRequest(
-    targetUid: string,
-    targetProfile: { name: string; avatarUrl?: string; handle?: string }
-  ) {
+  function handleSendFriendRequest(targetUid: string) {
     if (!profile) return;
-    sendFriendRequest(targetUid, targetProfile, {
-      name: profile.name,
-      avatarUrl: profile.avatarUrl,
-      handle: profile.handle,
-    }).catch((err) => console.error("Falha ao enviar solicitação:", err));
+    sendFriendRequest(targetUid).catch((err) => console.error("Falha ao enviar solicitação:", err));
   }
 
   function isRequestedByMe(f: { requestedBy: string }) {
-    return f.requestedBy === firebaseUser?.uid;
+    return f.requestedBy === authUser?.uid;
   }
 
   async function handleShare(rating: number, review: string, visibility: PostVisibility) {
@@ -521,7 +492,7 @@ export default function App() {
     );
   }
 
-  if (!profile || !firebaseUser) {
+  if (!profile || !authUser) {
     return <AuthScreen backdropPath={trending[0]?.backdrop_path ?? null} />;
   }
 
@@ -581,8 +552,7 @@ export default function App() {
 
         {activeTab === "feed" && (
           <FeedTab
-            uid={firebaseUser.uid}
-            currentUserInfo={{ name: profile.name, avatarUrl: profile.avatarUrl }}
+            uid={authUser.uid}
             posts={feedPosts}
             feedLoading={feedLoading}
             trending={feedTrending}
@@ -596,7 +566,7 @@ export default function App() {
           <div className="space-y-5">
             <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">Amigos</h1>
             <FriendsPanel
-              uid={firebaseUser.uid}
+              uid={authUser.uid}
               myProfile={{ name: profile.name, avatarUrl: profile.avatarUrl, handle: profile.handle }}
               accepted={friends}
               incoming={incomingFriendRequests}
@@ -713,7 +683,7 @@ export default function App() {
 
       <PublicProfileModal
         targetUid={publicProfileTarget}
-        currentUid={firebaseUser.uid}
+        currentUid={authUser.uid}
         genres={genres}
         friendshipWith={friendshipWith}
         isRequestedByMe={isRequestedByMe}
@@ -728,8 +698,7 @@ export default function App() {
       <PostDetailModal
         postId={postDetailTarget?.postId ?? null}
         highlightCommentId={postDetailTarget?.commentId}
-        currentUid={firebaseUser.uid}
-        currentUserInfo={{ name: profile.name, avatarUrl: profile.avatarUrl }}
+        currentUid={authUser.uid}
         mentionCandidates={mentionCandidates}
         onClose={() => setPostDetailTarget(null)}
         onOpenProfile={setPublicProfileTarget}

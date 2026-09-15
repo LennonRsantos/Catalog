@@ -1,25 +1,51 @@
 import { useEffect, useState } from "react";
-import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from "firebase/firestore";
-import { db } from "../services/firebase";
+import { supabase } from "../services/supabase";
 import type { MediaItem, MediaStatus, MediaType } from "../types";
+import type { Tables, TablesUpdate } from "../services/database.types";
 
-function catalogRef(uid: string) {
-  return collection(db, "profiles", uid, "catalog");
+type CatalogRow = Tables<"catalog_items">;
+
+function rowToItem(row: CatalogRow): MediaItem {
+  return {
+    id: row.id,
+    tmdbId: row.tmdb_id ?? undefined,
+    title: row.title,
+    type: row.type as MediaType,
+    status: row.status as MediaStatus,
+    rating: Number(row.rating),
+    review: row.review,
+    coverUrl: row.cover_url,
+    createdAt: new Date(row.created_at).getTime(),
+    genreIds: row.genre_ids ?? undefined,
+    runtimeMinutes: row.runtime_minutes ?? undefined,
+    progressSeason: row.progress_season ?? undefined,
+    progressMinutes: row.progress_minutes ?? undefined,
+    progressSeconds: row.progress_seconds ?? undefined,
+    isFavorite: row.is_favorite,
+    favoriteRank: row.favorite_rank ?? undefined,
+  };
 }
 
-function favoritesRef(uid: string) {
-  return collection(db, "profiles", uid, "favorites");
+function itemToRow(uid: string, item: MediaItem) {
+  return {
+    id: item.id,
+    owner_uid: uid,
+    tmdb_id: item.tmdbId ?? null,
+    title: item.title,
+    type: item.type,
+    status: item.status,
+    rating: item.rating,
+    review: item.review,
+    cover_url: item.coverUrl,
+    created_at: new Date(item.createdAt).toISOString(),
+    genre_ids: item.genreIds ?? null,
+    runtime_minutes: item.runtimeMinutes ?? null,
+    progress_season: item.progressSeason ?? null,
+    progress_minutes: item.progressMinutes ?? null,
+    progress_seconds: item.progressSeconds ?? null,
+    is_favorite: item.isFavorite ?? false,
+    favorite_rank: item.favoriteRank ?? null,
+  };
 }
 
 // Next free 1-10 rank slot for this type, or undefined if all 10 are taken
@@ -34,29 +60,6 @@ function nextFavoriteRank(items: MediaItem[], type: MediaType): number | undefin
   return undefined;
 }
 
-// Best-effort denormalized copy of favorited items into a cross-user-
-// readable subcollection, so a friend's Top 10 can be shown without exposing
-// their whole catalog (Quero Ver, progress notes, etc). Never blocks the
-// catalog write that triggered it — see firestore.rules for the read gate.
-function syncFavoriteSnapshot(uid: string, item: MediaItem): void {
-  const ref = doc(favoritesRef(uid), item.id);
-  if (item.isFavorite) {
-    const data: Record<string, unknown> = {
-      tmdbId: item.tmdbId ?? null,
-      mediaType: item.type === "Série" ? "tv" : "movie",
-      type: item.type,
-      title: item.title,
-      coverUrl: item.coverUrl,
-      rating: item.rating,
-      ratedAt: Date.now(),
-    };
-    if (item.favoriteRank != null) data.favoriteRank = item.favoriteRank;
-    setDoc(ref, data).catch((err) => console.warn("Falha ao sincronizar favorito (não bloqueia):", err));
-  } else {
-    deleteDoc(ref).catch(() => {});
-  }
-}
-
 export function useCatalog(uid: string | null) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,16 +72,41 @@ export function useCatalog(uid: string | null) {
     }
 
     setLoading(true);
-    const q = query(catalogRef(uid), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        setItems(snap.docs.map((d) => ({ ...(d.data() as Omit<MediaItem, "id">), id: d.id })));
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsubscribe;
+    let cancelled = false;
+
+    async function refetch() {
+      const { data, error } = await supabase
+        .from("catalog_items")
+        .select("*")
+        .eq("owner_uid", uid as string)
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.error("Falha ao carregar catálogo:", error);
+      } else {
+        setItems((data ?? []).map(rowToItem));
+      }
+      setLoading(false);
+    }
+
+    refetch();
+
+    // Resyncs the full list on any change rather than patching incrementally
+    // — simpler to get right, and cheap at this app's catalog sizes (same
+    // trade-off the rest of the app already makes elsewhere).
+    const channel = supabase
+      .channel(`catalog:${uid}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "catalog_items", filter: `owner_uid=eq.${uid}` },
+        () => refetch()
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [uid]);
 
   async function saveItem(item: MediaItem) {
@@ -88,42 +116,30 @@ export function useCatalog(uid: string | null) {
       const rank = nextFavoriteRank(items, item.type);
       if (rank !== undefined) finalItem = { ...item, favoriteRank: rank };
     }
-    const { id, ...data } = finalItem;
-    await setDoc(doc(catalogRef(uid), id), data);
-    syncFavoriteSnapshot(uid, finalItem);
+    const { error } = await supabase.from("catalog_items").upsert(itemToRow(uid, finalItem));
+    if (error) throw error;
   }
 
   async function updateStatus(id: string, status: MediaStatus) {
     if (!uid) return;
-    const data: Record<string, unknown> = { status };
+    const patch: TablesUpdate<"catalog_items"> = { status };
     if (status !== "Visto") {
-      data.rating = 0;
-      data.review = "";
+      patch.rating = 0;
+      patch.review = "";
     }
     if (status !== "Assistindo") {
-      data.progressSeason = deleteField();
-      data.progressMinutes = deleteField();
-      data.progressSeconds = deleteField();
+      patch.progress_season = null;
+      patch.progress_minutes = null;
+      patch.progress_seconds = null;
     }
-    await updateDoc(doc(catalogRef(uid), id), data);
-
-    const current = items.find((i) => i.id === id);
-    if (current) {
-      syncFavoriteSnapshot(uid, {
-        ...current,
-        status,
-        rating: status === "Visto" ? current.rating : 0,
-        review: status === "Visto" ? current.review : "",
-      });
-    }
+    const { error } = await supabase.from("catalog_items").update(patch).eq("id", id).eq("owner_uid", uid);
+    if (error) throw error;
   }
 
   async function updateRating(id: string, rating: number) {
     if (!uid) return;
-    await updateDoc(doc(catalogRef(uid), id), { rating });
-
-    const current = items.find((i) => i.id === id);
-    if (current) syncFavoriteSnapshot(uid, { ...current, rating });
+    const { error } = await supabase.from("catalog_items").update({ rating }).eq("id", id).eq("owner_uid", uid);
+    if (error) throw error;
   }
 
   async function updateProgress(
@@ -131,12 +147,16 @@ export function useCatalog(uid: string | null) {
     progress: { progressSeason?: number; progressMinutes?: number; progressSeconds?: number }
   ) {
     if (!uid) return;
-    const data: Record<string, unknown> = {
-      progressSeason: progress.progressSeason ?? deleteField(),
-      progressMinutes: progress.progressMinutes ?? deleteField(),
-      progressSeconds: progress.progressSeconds ?? deleteField(),
-    };
-    await updateDoc(doc(catalogRef(uid), id), data);
+    const { error } = await supabase
+      .from("catalog_items")
+      .update({
+        progress_season: progress.progressSeason ?? null,
+        progress_minutes: progress.progressMinutes ?? null,
+        progress_seconds: progress.progressSeconds ?? null,
+      })
+      .eq("id", id)
+      .eq("owner_uid", uid);
+    if (error) throw error;
   }
 
   // Explicit favorite toggle, independent of status/rating. Turning on
@@ -146,22 +166,26 @@ export function useCatalog(uid: string | null) {
     const current = items.find((i) => i.id === id);
     if (!current) return;
 
-    const data: Record<string, unknown> = { isFavorite };
-    let favoriteRank: number | undefined = current.favoriteRank;
+    let favoriteRank: number | null = current.favoriteRank ?? null;
     if (!isFavorite) {
-      favoriteRank = undefined;
-      data.favoriteRank = deleteField();
+      favoriteRank = null;
     } else if (favoriteRank == null) {
-      favoriteRank = nextFavoriteRank(items, current.type);
-      if (favoriteRank !== undefined) data.favoriteRank = favoriteRank;
+      favoriteRank = nextFavoriteRank(items, current.type) ?? null;
     }
 
-    await updateDoc(doc(catalogRef(uid), id), data);
-    syncFavoriteSnapshot(uid, { ...current, isFavorite, favoriteRank });
+    const { error } = await supabase
+      .from("catalog_items")
+      .update({ is_favorite: isFavorite, favorite_rank: favoriteRank })
+      .eq("id", id)
+      .eq("owner_uid", uid);
+    if (error) throw error;
   }
 
   // Swaps this item's rank with its neighbor among ranked favorites of the
-  // same type. No-op past the ends of the list or on unranked items.
+  // same type. No-op past the ends of the list or on unranked items. The two
+  // updates aren't wrapped in a single transaction (a brief inconsistent
+  // rank pair on a dropped connection is a cosmetic, self-healing risk, not
+  // a correctness one) — same risk tolerance the rest of this app accepts.
   async function moveFavoriteRank(id: string, direction: "up" | "down") {
     if (!uid) return;
     const current = items.find((i) => i.id === id);
@@ -178,36 +202,27 @@ export function useCatalog(uid: string | null) {
     const currentRank = current.favoriteRank;
     const otherRank = other.favoriteRank as number;
 
-    const batch = writeBatch(db);
-    batch.update(doc(catalogRef(uid), current.id), { favoriteRank: otherRank });
-    batch.update(doc(catalogRef(uid), other.id), { favoriteRank: currentRank });
-    await batch.commit();
-
-    syncFavoriteSnapshot(uid, { ...current, favoriteRank: otherRank });
-    syncFavoriteSnapshot(uid, { ...other, favoriteRank: currentRank });
+    const [r1, r2] = await Promise.all([
+      supabase.from("catalog_items").update({ favorite_rank: otherRank }).eq("id", current.id).eq("owner_uid", uid),
+      supabase.from("catalog_items").update({ favorite_rank: currentRank }).eq("id", other.id).eq("owner_uid", uid),
+    ]);
+    if (r1.error) throw r1.error;
+    if (r2.error) throw r2.error;
   }
 
   async function deleteItem(id: string) {
     if (!uid) return;
-    await deleteDoc(doc(catalogRef(uid), id));
-    deleteDoc(doc(favoritesRef(uid), id)).catch(() => {});
+    const { error } = await supabase.from("catalog_items").delete().eq("id", id).eq("owner_uid", uid);
+    if (error) throw error;
   }
 
   async function restoreItems(itemsToRestore: MediaItem[]) {
     if (!uid) return;
-    const chunks: MediaItem[][] = [];
-    for (let i = 0; i < itemsToRestore.length; i += 400) {
-      chunks.push(itemsToRestore.slice(i, i + 400));
+    const rows = itemsToRestore.map((item) => itemToRow(uid, item));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("catalog_items").upsert(rows.slice(i, i + 500));
+      if (error) throw error;
     }
-    for (const chunk of chunks) {
-      const batch = writeBatch(db);
-      for (const item of chunk) {
-        const { id, ...data } = item;
-        batch.set(doc(catalogRef(uid), id), data);
-      }
-      await batch.commit();
-    }
-    for (const item of itemsToRestore) syncFavoriteSnapshot(uid, item);
   }
 
   return {

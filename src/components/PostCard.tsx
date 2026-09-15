@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
+import { supabase } from "../services/supabase";
+import type { Tables } from "../services/database.types";
 import {
   Check,
   Clapperboard,
@@ -13,7 +14,6 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
-import { db } from "../services/firebase";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post, PostComment, PostVisibility } from "../types";
 import { StarRating } from "./StarRating";
@@ -38,10 +38,23 @@ const VISIBILITY_OPTIONS: { value: PostVisibility; label: string }[] = [
   { value: "private", label: "Só eu" },
 ];
 
+function rowToComment(row: Tables<"comments">): PostComment {
+  return {
+    id: row.id,
+    authorUid: row.author_uid,
+    authorName: row.author_name,
+    authorAvatarUrl: row.author_avatar_url ?? undefined,
+    text: row.text,
+    createdAt: new Date(row.created_at).getTime(),
+    editedAt: row.edited_at ? new Date(row.edited_at).getTime() : undefined,
+    mentions: (row.mentions as unknown as PostComment["mentions"]) ?? [],
+    mentionsAll: row.mentions_all,
+  };
+}
+
 interface PostCardProps {
   post: Post;
   currentUid: string;
-  currentUserInfo: { name: string; avatarUrl?: string };
   mentionCandidates: MentionCandidate[];
   onOpenProfile: (uid: string) => void;
   onOpenDetails: (target: DetailsTarget) => void;
@@ -52,7 +65,6 @@ interface PostCardProps {
 export function PostCard({
   post,
   currentUid,
-  currentUserInfo,
   mentionCandidates,
   onOpenProfile,
   onOpenDetails,
@@ -77,22 +89,62 @@ export function PostCard({
   useEscapeClose(() => setMenuOpen(false), menuOpen);
 
   useEffect(() => {
-    const ref = doc(db, "posts", post.id, "likes", currentUid);
-    return onSnapshot(ref, (snap) => setLiked(snap.exists()));
+    let cancelled = false;
+
+    async function refetchLiked() {
+      const { data } = await supabase
+        .from("likes")
+        .select("post_id")
+        .eq("post_id", post.id)
+        .eq("liker_uid", currentUid)
+        .maybeSingle();
+      if (!cancelled) setLiked(Boolean(data));
+    }
+
+    refetchLiked();
+
+    const channel = supabase
+      .channel(`likes:${post.id}:${currentUid}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "likes", filter: `post_id=eq.${post.id}` }, () => refetchLiked())
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [post.id, currentUid]);
 
   useEffect(() => {
     if (!commentsOpen) return;
-    const q = query(collection(db, "posts", post.id, "comments"), orderBy("createdAt", "asc"));
-    return onSnapshot(q, (snap) => {
-      setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PostComment));
-    });
+    let cancelled = false;
+
+    async function refetchComments() {
+      const { data, error } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("post_id", post.id)
+        .order("created_at", { ascending: true });
+      if (cancelled) return;
+      if (!error) setComments((data ?? []).map(rowToComment));
+    }
+
+    refetchComments();
+
+    const channel = supabase
+      .channel(`comments:${post.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "comments", filter: `post_id=eq.${post.id}` }, () => refetchComments())
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [commentsOpen, post.id]);
 
   function handleLikeToggle() {
-    toggleLike(post.id, currentUid, currentUserInfo, liked).catch((err) =>
-      console.error("Falha ao curtir:", err)
-    );
+    // Server (toggle_like RPC) decides current state itself — no need to
+    // pass currentUserInfo/liked from the client anymore.
+    toggleLike(post.id).catch((err) => console.error("Falha ao curtir:", err));
   }
 
   function handleSubmitComment(e: React.FormEvent) {
@@ -101,18 +153,7 @@ export function PostCard({
     if (!text) return;
     const { mentions, mentionsAll } = extractMentions(text, mentionCandidates);
     setCommentText("");
-    addComment(
-      post.id,
-      {
-        authorUid: currentUid,
-        authorName: currentUserInfo.name,
-        authorAvatarUrl: currentUserInfo.avatarUrl,
-        text,
-        mentions,
-        mentionsAll,
-      },
-      mentionCandidates.map((c) => c.uid)
-    ).catch((err) => console.error("Falha ao comentar:", err));
+    addComment(post.id, { text, mentions, mentionsAll }).catch((err) => console.error("Falha ao comentar:", err));
   }
 
   function startEditComment(comment: PostComment) {

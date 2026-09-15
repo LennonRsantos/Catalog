@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { Heart, Loader2, User as UserIcon, X } from "lucide-react";
-import { db } from "../services/firebase";
+import { supabase } from "../services/supabase";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import type { PostLike } from "../types";
 
@@ -18,12 +17,32 @@ export function LikesListModal({ postId, onClose, onOpenProfile }: LikesListModa
   useEffect(() => {
     if (!postId) return;
     setLoading(true);
-    const q = query(collection(db, "posts", postId, "likes"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setLikes(snap.docs.map((d) => d.data() as PostLike));
+    let cancelled = false;
+
+    async function refetch() {
+      const { data, error } = await supabase
+        .from("likes")
+        .select("*")
+        .eq("post_id", postId as string)
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      if (!error) {
+        setLikes((data ?? []).map((row) => ({ uid: row.liker_uid, name: row.name, avatarUrl: row.avatar_url ?? undefined, createdAt: new Date(row.created_at).getTime() })));
+      }
       setLoading(false);
-    });
-    return unsubscribe;
+    }
+
+    refetch();
+
+    const channel = supabase
+      .channel(`likes:${postId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "likes", filter: `post_id=eq.${postId}` }, () => refetch())
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [postId]);
 
   useEscapeClose(onClose, Boolean(postId));

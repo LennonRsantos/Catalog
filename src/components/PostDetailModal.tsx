@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
 import { Loader2, X } from "lucide-react";
-import { db } from "../services/firebase";
+import { supabase } from "../services/supabase";
+import { rowToPost } from "../hooks/useFeed";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post } from "../types";
 import type { MentionCandidate } from "../utils/mentions";
@@ -12,7 +12,6 @@ interface PostDetailModalProps {
   postId: string | null;
   highlightCommentId?: string;
   currentUid: string;
-  currentUserInfo: { name: string; avatarUrl?: string };
   mentionCandidates: MentionCandidate[];
   onClose: () => void;
   onOpenProfile: (uid: string) => void;
@@ -23,7 +22,6 @@ export function PostDetailModal({
   postId,
   highlightCommentId,
   currentUid,
-  currentUserInfo,
   mentionCandidates,
   onClose,
   onOpenProfile,
@@ -35,15 +33,27 @@ export function PostDetailModal({
 
   useEffect(() => {
     if (!postId) return;
+    let cancelled = false;
     setLoading(true);
     setNotFound(false);
-    getDoc(doc(db, "posts", postId))
-      .then((snap) => {
-        if (snap.exists()) setPost({ id: snap.id, ...snap.data() } as Post);
+
+    async function load() {
+      try {
+        const { data } = await supabase.from("posts").select("*").eq("id", postId as string).maybeSingle();
+        if (cancelled) return;
+        if (data) setPost(rowToPost(data));
         else setNotFound(true);
-      })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      } catch {
+        if (!cancelled) setNotFound(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [postId]);
 
   useEscapeClose(onClose, Boolean(postId));
@@ -80,7 +90,6 @@ export function PostDetailModal({
           <PostCard
             post={post}
             currentUid={currentUid}
-            currentUserInfo={currentUserInfo}
             mentionCandidates={mentionCandidates}
             onOpenProfile={onOpenProfile}
             onOpenDetails={onOpenDetails}
