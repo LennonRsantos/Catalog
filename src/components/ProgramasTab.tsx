@@ -202,26 +202,28 @@ export function ProgramasTab({
         )}
       </div>
 
-      <StatusTabs active={activeStatus} onChange={selectStatus} counts={counts} />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <StatusTabs active={activeStatus} onChange={selectStatus} counts={counts} />
 
-      <div className="relative">
-        <div className="no-scrollbar flex gap-2.5 overflow-x-auto">
-          {filterChips.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setProgFilter(key)}
-              className={`flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-medium transition ${
-                progFilter === key
-                  ? "border-[#a32638] bg-[#a32638]/10 text-[#bd3347]"
-                  : "border-stone-800 bg-stone-900 text-stone-400 hover:text-white"
-              }`}
-            >
-              {key === "Favoritos" && <Star size={12} className={progFilter === key ? "fill-[#d9a441] text-[#d9a441]" : ""} />}
-              {label}
-            </button>
-          ))}
+        <div className="relative">
+          <div className="no-scrollbar flex gap-2.5 overflow-x-auto">
+            {filterChips.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setProgFilter(key)}
+                className={`flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-medium transition ${
+                  progFilter === key
+                    ? "border-[#a32638] bg-[#a32638]/10 text-[#bd3347]"
+                    : "border-stone-800 bg-stone-900 text-stone-400 hover:text-white"
+                }`}
+              >
+                {key === "Favoritos" && <Star size={12} className={progFilter === key ? "fill-[#d9a441] text-[#d9a441]" : ""} />}
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-[#0e0c0a] to-transparent lg:hidden" />
         </div>
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-[#0e0c0a] to-transparent sm:hidden" />
       </div>
 
       {heroItem && (
