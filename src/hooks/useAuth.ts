@@ -144,7 +144,13 @@ export function useAuth() {
   }
 
   async function resetPassword(email: string) {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    // Without redirectTo, the link falls back to the project's configured
+    // Site URL (Supabase dashboard → Auth → URL Configuration), which may
+    // not point at this deployment — pin it explicitly to wherever the app
+    // is actually running.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
     if (error) throw error;
   }
 
