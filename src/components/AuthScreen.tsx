@@ -58,7 +58,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
     }
     if (mode === "signup" && name.trim().length < 2) return "Informe seu nome completo.";
     if (mode === "signup" && !isValidTag(tag))
-      return "Informe uma TAG válida: # seguido de 3 a 20 letras, números ou _.";
+      return "Informe uma TAG válida: @ seguido de 3 a 20 letras, números ou _.";
     if (!isValidEmail(email)) return "Informe um e-mail válido.";
     if (password.length < 6) return "A senha deve ter ao menos 6 caracteres.";
     return null;
@@ -232,14 +232,14 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
                       setTag(e.target.value);
                       clearErrorOnEdit();
                     }}
-                    placeholder="#suatag"
+                    placeholder="@suatag"
                     autoComplete="off"
                     spellCheck={false}
                     required
                     className="w-full rounded-lg border border-stone-800 bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
                   />
                   <p className="mt-1.5 text-[11px] text-stone-500">
-                    Assim seus amigos te encontram. # seguido de 3 a 20 letras, números ou _.
+                    Assim seus amigos te encontram e podem te @mencionar. @ seguido de 3 a 20 letras, números ou _.
                   </p>
                 </div>
               )}

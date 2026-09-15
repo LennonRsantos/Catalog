@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
 import {
   Check,
   Clapperboard,
   Loader2,
+  Sparkles,
   Star,
   Tv,
   User as UserIcon,
@@ -14,15 +15,14 @@ import {
 } from "lucide-react";
 import { db } from "../services/firebase";
 import type { DetailsTarget } from "./MediaDetailsModal";
-import type { FavoriteEntry, Friendship, Post, PublicProfile } from "../types";
+import type { FavoriteEntry, Friendship, Genre, PublicProfile } from "../types";
 import { DEFAULT_COVER } from "../types";
-import { PostCard } from "./PostCard";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 
 interface PublicProfileModalProps {
   targetUid: string | null;
   currentUid: string;
-  currentUserInfo: { name: string; avatarUrl?: string };
+  genres: Genre[];
   friendshipWith: (targetUid: string) => Friendship | undefined;
   isRequestedByMe: (f: Friendship) => boolean;
   onSendRequest: (targetUid: string, targetProfile: { name: string; avatarUrl?: string; handle?: string }) => void;
@@ -31,6 +31,15 @@ interface PublicProfileModalProps {
   onRemove: (id: string) => void;
   onClose: () => void;
   onOpenDetails: (target: DetailsTarget) => void;
+}
+
+// Own doc so a friend (or anyone, if this profile is public) can read genre
+// preferences without profiles/{uid} itself being readable — see
+// firestore.rules's profiles/{uid}/publicMeta/genres and useAuth.ts's
+// syncGenrePrefs.
+async function fetchGenrePrefs(uid: string): Promise<number[]> {
+  const snap = await getDoc(doc(db, "profiles", uid, "publicMeta", "genres"));
+  return snap.exists() ? ((snap.data().genreIds as number[]) ?? []) : [];
 }
 
 // Sorted client-side (not via Firestore orderBy) so unranked favorites
@@ -114,7 +123,7 @@ function Top10Row({
 export function PublicProfileModal({
   targetUid,
   currentUid,
-  currentUserInfo,
+  genres,
   friendshipWith,
   isRequestedByMe,
   onSendRequest,
@@ -126,10 +135,11 @@ export function PublicProfileModal({
 }: PublicProfileModalProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [posts, setPosts] = useState<Post[]>([]);
   const [topMovies, setTopMovies] = useState<FavoriteEntry[]>([]);
   const [topSeries, setTopSeries] = useState<FavoriteEntry[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [genreIds, setGenreIds] = useState<number[]>([]);
+  const [genresLoading, setGenresLoading] = useState(true);
 
   const friendship = targetUid ? friendshipWith(targetUid) : undefined;
   const isFriend = friendship?.status === "accepted";
@@ -145,15 +155,13 @@ export function PublicProfileModal({
 
   useEffect(() => {
     if (!targetUid) return;
-    const visibility = isFriend ? "friends" : "public";
-    const q = query(
-      collection(db, "posts"),
-      where("authorUid", "==", targetUid),
-      where("visibility", "==", visibility),
-      orderBy("createdAt", "desc"),
-      limit(20)
-    );
-    return onSnapshot(q, (snap) => setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Post)));
+    setGenresLoading(true);
+    fetchGenrePrefs(targetUid)
+      // Same honest-enough fallback as the favorites fetch below — most
+      // likely a privacy denial (private profile, not friends).
+      .then(setGenreIds)
+      .catch(() => setGenreIds([]))
+      .finally(() => setGenresLoading(false));
   }, [targetUid, isFriend]);
 
   useEffect(() => {
@@ -185,41 +193,57 @@ export function PublicProfileModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-2xl border border-stone-800 bg-stone-900 p-6 shadow-2xl sm:rounded-2xl"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-2xl border border-stone-800 bg-stone-900 shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-end">
+        <div className="relative h-28 w-full shrink-0 sm:h-36">
+          <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-stone-950">
+            {profile?.coverUrl ? (
+              <img src={profile.coverUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="h-full w-full bg-linear-to-br from-stone-800 via-stone-900 to-stone-950" />
+            )}
+          </div>
+
           <button
             onClick={onClose}
-            className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-800 hover:text-white"
+            className="absolute right-3 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white/90 backdrop-blur transition hover:bg-black/70 hover:text-white"
             aria-label="Fechar"
           >
             <X size={20} />
           </button>
+
+          {/* Overlaps the banner's bottom edge by half its own height — kept
+              as its own absolutely-positioned layer (not a negative margin
+              on the content below) so it never depends on that content's
+              flow/height to land in the right place. */}
+          <div className="absolute -bottom-12 left-1/2 z-10 -translate-x-1/2">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-stone-900 bg-stone-950">
+              {profile?.avatarUrl ? (
+                <img src={profile.avatarUrl} alt={profile.name} className="h-full w-full object-cover" />
+              ) : (
+                <UserIcon size={36} className="text-stone-700" />
+              )}
+            </div>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-500">
-            <Loader2 className="animate-spin" size={16} /> Carregando…
-          </div>
-        ) : !profile ? (
-          <p className="py-10 text-center text-sm text-stone-500">Perfil indisponível.</p>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-stone-800 bg-stone-950">
-                {profile.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={profile.name} className="h-full w-full object-cover" />
-                ) : (
-                  <UserIcon size={36} className="text-stone-700" />
-                )}
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">{profile.name}</h2>
-                <p className="text-xs text-stone-500">{profile.handle}</p>
-              </div>
+        <div className="px-6 pb-6 pt-14">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-stone-500">
+              <Loader2 className="animate-spin" size={16} /> Carregando…
+            </div>
+          ) : !profile ? (
+            <p className="py-10 text-center text-sm text-stone-500">Perfil indisponível.</p>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div>
+                  <h2 className="text-lg font-bold text-white">{profile.name}</h2>
+                  <p className="text-xs text-stone-500">{profile.handle}</p>
+                </div>
 
-              {targetUid !== currentUid && (
+                {targetUid !== currentUid && (
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {!friendship && (
                     <button
@@ -282,56 +306,66 @@ export function PublicProfileModal({
                   )}
                 </div>
               )}
-            </div>
+              </div>
 
-            <div className="border-t border-stone-800 pt-5">
-              {favoritesLoading ? (
-                <div className="flex items-center justify-center gap-2 py-6 text-xs text-stone-500">
-                  <Loader2 className="animate-spin" size={14} /> Carregando favoritos…
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <Top10Row
-                    icon={Clapperboard}
-                    title="Top 10 Filmes"
-                    entries={topMovies}
-                    emptyMessage="Este usuário ainda não possui filmes favoritos para recomendar."
-                    onOpenDetails={onOpenDetails}
-                  />
-                  <Top10Row
-                    icon={Tv}
-                    title="Top 10 Séries"
-                    entries={topSeries}
-                    emptyMessage="Este usuário ainda não possui séries favoritas para recomendar."
-                    onOpenDetails={onOpenDetails}
-                  />
-                </div>
-              )}
-            </div>
+              <div className="border-t border-stone-800 pt-5">
+                <h3 className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  <Sparkles size={14} className="text-[#a32638]" />
+                  Gêneros Favoritos
+                </h3>
+                {genresLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-xs text-stone-500">
+                    <Loader2 className="animate-spin" size={13} /> Carregando…
+                  </div>
+                ) : genreIds.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-stone-800 px-3 py-4 text-center text-xs text-stone-500">
+                    Nenhuma preferência de gênero definida.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {genreIds.map((id) => {
+                      const name = genres.find((g) => g.id === id)?.name;
+                      if (!name) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="rounded-full border border-[#a32638]/40 bg-[#a32638]/10 px-3 py-1.5 text-xs font-medium text-[#d97a86]"
+                        >
+                          {name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-            <div className="space-y-3 border-t border-stone-800 pt-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-                Atividades Recentes
-              </h3>
-              {posts.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-stone-800 px-3 py-8 text-center text-xs text-stone-500">
-                  Nenhuma atividade visível.
-                </p>
-              ) : (
-                posts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    currentUid={currentUid}
-                    currentUserInfo={currentUserInfo}
-                    onOpenProfile={() => {}}
-                    onOpenDetails={onOpenDetails}
-                  />
-                ))
-              )}
+              <div className="border-t border-stone-800 pt-5">
+                {favoritesLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-6 text-xs text-stone-500">
+                    <Loader2 className="animate-spin" size={14} /> Carregando favoritos…
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <Top10Row
+                      icon={Clapperboard}
+                      title="Top 10 Filmes"
+                      entries={topMovies}
+                      emptyMessage="Este usuário ainda não possui filmes favoritos para recomendar."
+                      onOpenDetails={onOpenDetails}
+                    />
+                    <Top10Row
+                      icon={Tv}
+                      title="Top 10 Séries"
+                      entries={topSeries}
+                      emptyMessage="Este usuário ainda não possui séries favoritas para recomendar."
+                      onOpenDetails={onOpenDetails}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

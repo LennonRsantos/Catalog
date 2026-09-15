@@ -4,11 +4,16 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(email.trim());
 }
 
-// "#" + 3-20 letters/digits/underscore. No spaces, no other symbols.
-export const TAG_RE = /^#[a-zA-Z0-9_]{3,20}$/;
+// "@" + 3-20 letters/digits/underscore. No spaces, no other symbols.
+export const TAG_RE = /^@[a-zA-Z0-9_]{3,20}$/;
+
+// "todos" is reserved for the special @todos mention (see utils/mentions.ts)
+// and can never be claimed as a personal TAG.
+export const RESERVED_TAGS = ["todos"];
 
 export function isValidTag(tag: string): boolean {
-  return TAG_RE.test(tag.trim());
+  const trimmed = tag.trim();
+  return TAG_RE.test(trimmed) && !RESERVED_TAGS.includes(trimmed.slice(1).toLowerCase());
 }
 
 // Valid calendar date, not in the future, and a plausible age (13-120).

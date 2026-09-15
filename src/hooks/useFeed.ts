@@ -16,10 +16,48 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../services/firebase";
-import type { Post, PostVisibility } from "../types";
+import type { Post, PostMention, PostVisibility } from "../types";
 
 function notificationRef(recipientUid: string) {
   return doc(collection(db, "profiles", recipientUid, "notifications"));
+}
+
+// Best-effort @mention fan-out — deliberately outside any transaction and
+// one setDoc per recipient, so a recipient the rules reject (e.g. a
+// "friends"-visibility post mentioning someone who isn't the author's
+// friend, so canUidReadPost denies it) never blocks the post/comment itself
+// or the other recipients. Same reasoning as notifyFriendsOfNewPost.
+export async function notifyMentions(
+  targetUids: string[],
+  exclude: Set<string>,
+  postId: string,
+  actor: { uid: string; name: string; avatarUrl?: string },
+  post: { title: string; coverUrl: string },
+  extra?: { commentId: string; commentPreview: string }
+): Promise<void> {
+  const targets = Array.from(new Set(targetUids)).filter((u) => u !== actor.uid && !exclude.has(u));
+  if (targets.length === 0) return;
+  await Promise.all(
+    targets.map((targetUid) =>
+      setDoc(notificationRef(targetUid), {
+        type: "mention",
+        actorUid: actor.uid,
+        actorName: actor.name,
+        actorAvatarUrl: actor.avatarUrl ?? null,
+        postId,
+        postTitle: post.title,
+        postCoverUrl: post.coverUrl,
+        ...(extra ?? {}),
+        createdAt: Date.now(),
+        read: false,
+      }).catch((err) => console.warn(`Falha ao notificar menção pra ${targetUid} (não bloqueia):`, err))
+    )
+  );
+}
+
+export function mentionTargetUids(mentions: PostMention[] | undefined, mentionsAll: boolean | undefined, allFriendUids: string[]): string[] {
+  const uids = (mentions ?? []).map((m) => m.uid);
+  return mentionsAll ? [...uids, ...allFriendUids] : uids;
 }
 
 // Firestore's `in` operator accepts at most 30 values. We reserve none for
@@ -151,7 +189,7 @@ export async function deletePost(postId: string): Promise<void> {
 
 export async function updatePostContent(
   postId: string,
-  fields: Partial<Pick<Post, "rating" | "review" | "visibility">>
+  fields: Partial<Pick<Post, "rating" | "review" | "visibility" | "mentions" | "mentionsAll">>
 ): Promise<void> {
   await updateDoc(doc(db, "posts", postId), fields);
 }
@@ -194,13 +232,21 @@ export async function toggleLike(
 
 export async function addComment(
   postId: string,
-  comment: { authorUid: string; authorName: string; authorAvatarUrl?: string; text: string }
+  comment: {
+    authorUid: string;
+    authorName: string;
+    authorAvatarUrl?: string;
+    text: string;
+    mentions?: PostMention[];
+    mentionsAll?: boolean;
+  },
+  allFriendUids: string[] = []
 ): Promise<void> {
   const postRef = doc(db, "posts", postId);
   const commentRef = doc(collection(db, "posts", postId, "comments"));
-  await runTransaction(db, async (tx) => {
+  const post = await runTransaction(db, async (tx) => {
     const postSnap = await tx.get(postRef);
-    if (!postSnap.exists()) return;
+    if (!postSnap.exists()) return null;
     const post = postSnap.data() as Post;
     const count = post.commentCount ?? 0;
     tx.set(commentRef, { ...comment, createdAt: Date.now() });
@@ -220,11 +266,40 @@ export async function addComment(
         read: false,
       });
     }
+    return post;
   });
+
+  // A private post can only ever be commented on by its own author (that's
+  // the only way canReadPost lets a comment through), so any @mention in
+  // it would point a friend at a post they can never open — skip notifying.
+  if (!post || post.visibility === "private") return;
+
+  const exclude = new Set<string>();
+  if (post.authorUid !== comment.authorUid) exclude.add(post.authorUid); // already got the "comment" notification above
+
+  await notifyMentions(
+    mentionTargetUids(comment.mentions, comment.mentionsAll, allFriendUids),
+    exclude,
+    postId,
+    { uid: comment.authorUid, name: comment.authorName, avatarUrl: comment.authorAvatarUrl },
+    { title: post.title, coverUrl: post.coverUrl },
+    { commentId: commentRef.id, commentPreview: comment.text.slice(0, 80) }
+  );
 }
 
-export async function updateComment(postId: string, commentId: string, text: string): Promise<void> {
-  await updateDoc(doc(db, "posts", postId, "comments", commentId), { text, editedAt: Date.now() });
+export async function updateComment(
+  postId: string,
+  commentId: string,
+  text: string,
+  mentions: PostMention[] = [],
+  mentionsAll = false
+): Promise<void> {
+  await updateDoc(doc(db, "posts", postId, "comments", commentId), {
+    text,
+    editedAt: Date.now(),
+    mentions,
+    mentionsAll,
+  });
 }
 
 export async function deleteComment(postId: string, commentId: string): Promise<void> {

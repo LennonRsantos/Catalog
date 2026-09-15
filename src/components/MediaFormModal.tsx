@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Clapperboard, Heart, Tv, X } from "lucide-react";
 import type { MediaItem, MediaStatus, MediaType } from "../types";
 import { DEFAULT_COVER, MEDIA_STATUSES, MEDIA_TYPES } from "../types";
 import { StarRating } from "./StarRating";
+import { MentionField } from "./MentionField";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { generateId } from "../utils/id";
+import { extractMentions, type MentionCandidate, type ResolvedMention } from "../utils/mentions";
 
 export interface MediaSeed {
   title: string;
@@ -14,10 +16,18 @@ export interface MediaSeed {
   genreIds?: number[];
 }
 
+export interface WatchedWith {
+  mentions: ResolvedMention[];
+  mentionsAll: boolean;
+}
+
+export const NO_WATCHED_WITH: WatchedWith = { mentions: [], mentionsAll: false };
+
 interface MediaFormModalProps {
   open: boolean;
   onClose: () => void;
-  onSave: (item: MediaItem) => void;
+  onSave: (item: MediaItem, watchedWith: WatchedWith) => void;
+  mentionCandidates: MentionCandidate[];
   initialItem?: MediaItem | null;
   seed?: MediaSeed | null;
 }
@@ -34,8 +44,10 @@ function emptyDraft(): Omit<MediaItem, "id" | "createdAt"> {
   };
 }
 
-export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: MediaFormModalProps) {
+export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initialItem, seed }: MediaFormModalProps) {
   const [draft, setDraft] = useState(emptyDraft());
+  const [watchWithEnabled, setWatchWithEnabled] = useState(false);
+  const [watchWithText, setWatchWithText] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -61,10 +73,17 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
       } else {
         setDraft(emptyDraft());
       }
+      // Who you watched with is a per-share annotation, not part of the
+      // catalog item itself — never restored when reopening/editing.
+      setWatchWithEnabled(false);
+      setWatchWithText("");
     }
   }, [open, initialItem, seed]);
 
   useEscapeClose(onClose, open);
+
+  const watchWith = useMemo(() => extractMentions(watchWithText, mentionCandidates), [watchWithText, mentionCandidates]);
+
   if (!open) return null;
 
   const isEditing = Boolean(initialItem);
@@ -86,23 +105,50 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
     setDraft({ ...draft, progressSeconds: Math.min(59, seconds) });
   }
 
+  function disableWatchWith() {
+    setWatchWithEnabled(false);
+    setWatchWithText("");
+  }
+
+  function removeWatchWithMention(handle: string) {
+    const body = handle.replace(/^@/, "");
+    setWatchWithText((t) =>
+      t
+        .replace(new RegExp(`@${body}\\b`, "i"), "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    );
+  }
+
+  function removeWatchWithAll() {
+    setWatchWithText((t) =>
+      t
+        .replace(/@todos\b/i, "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    );
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.title.trim()) return;
 
-    onSave({
-      id: initialItem?.id ?? generateId(),
-      createdAt: initialItem?.createdAt ?? Date.now(),
-      ...draft,
-      title: draft.title.trim(),
-      coverUrl: draft.coverUrl.trim() || DEFAULT_COVER,
-      rating: canRate ? draft.rating : 0,
-      review: canRate ? draft.review : "",
-      progressSeason: isWatching && draft.type === "Série" ? draft.progressSeason : undefined,
-      progressMinutes: isWatching ? draft.progressMinutes : undefined,
-      progressSeconds: isWatching ? draft.progressSeconds : undefined,
-      favoriteRank: draft.isFavorite ? draft.favoriteRank : undefined,
-    });
+    onSave(
+      {
+        id: initialItem?.id ?? generateId(),
+        createdAt: initialItem?.createdAt ?? Date.now(),
+        ...draft,
+        title: draft.title.trim(),
+        coverUrl: draft.coverUrl.trim() || DEFAULT_COVER,
+        rating: canRate ? draft.rating : 0,
+        review: canRate ? draft.review : "",
+        progressSeason: isWatching && draft.type === "Série" ? draft.progressSeason : undefined,
+        progressMinutes: isWatching ? draft.progressMinutes : undefined,
+        progressSeconds: isWatching ? draft.progressSeconds : undefined,
+        favoriteRank: draft.isFavorite ? draft.favoriteRank : undefined,
+      },
+      canRate && watchWithEnabled ? watchWith : NO_WATCHED_WITH
+    );
     onClose();
   }
 
@@ -112,23 +158,18 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-2xl border border-stone-800 bg-stone-900 p-6 shadow-2xl sm:rounded-2xl"
+        className="relative w-full max-w-md rounded-t-2xl border border-stone-800 bg-stone-900 p-6 shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">
-            {isEditing ? "Editar Mídia" : "Nova Mídia"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-800 hover:text-white"
-            aria-label="Fechar"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 rounded-full p-1.5 text-stone-400 transition hover:bg-stone-800 hover:text-white"
+          aria-label="Fechar"
+        >
+          <X size={20} />
+        </button>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pr-8">
           {identityLocked ? (
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400">
@@ -219,8 +260,8 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
           </button>
 
           {isWatching && (
-            <div>
-              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400">
+            <div className="space-y-2 border-t border-stone-800 pt-4">
+              <label className="block text-xs font-medium uppercase tracking-wide text-stone-400">
                 Onde Parou
               </label>
               <div className="space-y-2">
@@ -241,54 +282,44 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
                 )}
 
                 <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={progressHours || ""}
-                      onChange={(e) => setProgressHours(e.target.value ? Number(e.target.value) : 0)}
-                      placeholder="Horas"
-                      className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="number"
-                      min={0}
-                      max={59}
-                      value={progressMinutesPart || ""}
-                      onChange={(e) => setProgressMinutesPart(e.target.value ? Number(e.target.value) : 0)}
-                      placeholder="Minutos"
-                      className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="number"
-                      min={0}
-                      max={59}
-                      value={progressSecondsPart || ""}
-                      onChange={(e) => setProgressSecondsPart(e.target.value ? Number(e.target.value) : 0)}
-                      placeholder="Segundos"
-                      className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={progressHours || ""}
+                    onChange={(e) => setProgressHours(e.target.value ? Number(e.target.value) : 0)}
+                    placeholder="Horas"
+                    className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={progressMinutesPart || ""}
+                    onChange={(e) => setProgressMinutesPart(e.target.value ? Number(e.target.value) : 0)}
+                    placeholder="Minutos"
+                    className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={progressSecondsPart || ""}
+                    onChange={(e) => setProgressSecondsPart(e.target.value ? Number(e.target.value) : 0)}
+                    placeholder="Segundos"
+                    className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
+                  />
                 </div>
               </div>
             </div>
           )}
 
           {canRate ? (
-            <>
+            <div className="space-y-4 border-t border-stone-800 pt-4">
               <div>
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400">
                   Nota
                 </label>
-                <StarRating
-                  value={draft.rating}
-                  onChange={(rating) => setDraft({ ...draft, rating })}
-                  size={26}
-                />
+                <StarRating value={draft.rating} onChange={(rating) => setDraft({ ...draft, rating })} size={26} />
               </div>
 
               <div>
@@ -303,7 +334,82 @@ export function MediaFormModal({ open, onClose, onSave, initialItem, seed }: Med
                   className="w-full resize-none rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
                 />
               </div>
-            </>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400">
+                  Você assistiu com alguém?
+                </label>
+                <div className="flex overflow-hidden rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setWatchWithEnabled(true)}
+                    className={`flex-1 px-2 py-2 text-xs font-medium transition ${
+                      watchWithEnabled ? "bg-[#a32638] text-white" : "bg-stone-950 text-stone-400 hover:text-white"
+                    }`}
+                  >
+                    Sim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={disableWatchWith}
+                    className={`flex-1 px-2 py-2 text-xs font-medium transition ${
+                      !watchWithEnabled ? "bg-[#a32638] text-white" : "bg-stone-950 text-stone-400 hover:text-white"
+                    }`}
+                  >
+                    Não
+                  </button>
+                </div>
+
+                {watchWithEnabled && (
+                  <div className="mt-2 space-y-2">
+                    {mentionCandidates.length === 0 ? (
+                      <p className="rounded-lg bg-stone-950 px-3 py-2.5 text-xs text-stone-500">
+                        Você ainda não tem amigos pra marcar.
+                      </p>
+                    ) : (
+                      <>
+                        <MentionField
+                          value={watchWithText}
+                          onChange={setWatchWithText}
+                          candidates={mentionCandidates}
+                          placeholder="Digite @ e escolha quem assistiu com você"
+                          className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
+                        />
+                        {(watchWith.mentions.length > 0 || watchWith.mentionsAll) && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {watchWith.mentionsAll ? (
+                              <span className="flex items-center gap-1 rounded-full bg-[#a32638]/15 px-2.5 py-1 text-[11px] font-medium text-[#bd3347]">
+                                Todos os amigos
+                                <button type="button" onClick={removeWatchWithAll} className="hover:text-white" aria-label="Remover">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ) : (
+                              watchWith.mentions.map((m) => (
+                                <span
+                                  key={m.uid}
+                                  className="flex items-center gap-1 rounded-full bg-stone-800 px-2.5 py-1 text-[11px] font-medium text-stone-200"
+                                >
+                                  {m.name}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeWatchWithMention(m.handle)}
+                                    className="text-stone-400 hover:text-white"
+                                    aria-label={`Remover ${m.name}`}
+                                  >
+                                    <X size={11} />
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="rounded-lg bg-stone-950 px-3 py-2.5 text-xs text-stone-500">
               Marque como "Visto" para avaliar e comentar.

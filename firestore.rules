@@ -43,6 +43,23 @@ service cloud.firestore {
       );
     }
 
+    // Same accepted-friendship check as isFriendOf, but for an arbitrary
+    // pair rather than "request.auth.uid and otherUid" — needed to check
+    // whether a @mention's RECIPIENT (not the actor writing the
+    // notification) can read the post they're being pointed at.
+    function areFriends(a, b) {
+      let pid = a < b ? a + '_' + b : b + '_' + a;
+      return exists(/databases/$(database)/documents/friendships/$(pid)) &&
+        get(/databases/$(database)/documents/friendships/$(pid)).data.status == 'accepted';
+    }
+
+    function canUidReadPost(targetUid, postId) {
+      let p = get(/databases/$(database)/documents/posts/$(postId)).data;
+      return targetUid == p.authorUid ||
+        p.visibility == 'public' ||
+        (p.visibility == 'friends' && areFriends(targetUid, p.authorUid));
+    }
+
     match /profiles/{uid} {
       allow read: if isOwner(uid) || isAdmin();
 
@@ -73,6 +90,16 @@ service cloud.firestore {
         allow write: if isOwner(uid) || isAdmin();
       }
 
+      // Denormalized copy of favoriteGenreIds — profiles/{uid} itself is
+      // owner-only, so this single doc is what lets a friend (or the public,
+      // if this profile is public) see the genre preferences shown on the
+      // profile card. Same visibility gate as favorites/publicProfiles.
+      match /publicMeta/genres {
+        allow read: if isOwner(uid) || isAdmin() || isFriendOf(uid) ||
+          get(/databases/$(database)/documents/publicProfiles/$(uid)).data.profileVisibility == 'public';
+        allow write: if isOwner(uid) || isAdmin();
+      }
+
       // Per-recipient inbox. uid here is the RECIPIENT; the doc is written
       // by whoever performed the action (actorUid), not by uid's own
       // client — so create must prove the actor is allowed to notify this
@@ -90,6 +117,13 @@ service cloud.firestore {
             ||
             (request.resource.data.type in ['like', 'comment']
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorUid == uid)
+            ||
+            // @mention: the recipient can be anyone the actor mentioned
+            // (always one of the actor's own accepted friends — the client
+            // only offers friends as mention candidates), as long as they
+            // can actually read the post being pointed at.
+            (request.resource.data.type == 'mention'
+              && canUidReadPost(uid, request.resource.data.postId))
           );
 
         // A post's author may clear notifications (in anyone's inbox) that
@@ -113,7 +147,7 @@ service cloud.firestore {
 
       allow write: if (isOwner(uid) || isAdmin()) &&
         request.resource.data.uid == uid &&
-        request.resource.data.keys().hasOnly(['uid', 'name', 'nameLower', 'handle', 'handleLower', 'avatarUrl', 'profileVisibility']);
+        request.resource.data.keys().hasOnly(['uid', 'name', 'nameLower', 'handle', 'handleLower', 'avatarUrl', 'coverUrl', 'profileVisibility']);
 
       allow delete: if isOwner(uid) || isAdmin();
     }
@@ -225,10 +259,11 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && request.resource.data.authorUid == request.auth.uid
           && canReadPost(postId);
-        // Only the comment's own author can edit it, and only its text
-        // (plus an editedAt stamp) — author/creation time never change.
+        // Only the comment's own author can edit it, and only its text,
+        // @mentions (re-parsed from the edited text) and an editedAt stamp
+        // — author/creation time never change.
         allow update: if isOwner(resource.data.authorUid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt', 'mentions', 'mentionsAll'])
           && request.resource.data.authorUid == resource.data.authorUid
           && request.resource.data.authorName == resource.data.authorName
           && request.resource.data.createdAt == resource.data.createdAt;

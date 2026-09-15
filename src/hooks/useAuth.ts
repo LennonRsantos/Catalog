@@ -47,6 +47,20 @@ function handleDocRef(tagLower: string) {
   return doc(db, "handles", tagLower);
 }
 
+function genrePrefsRef(uid: string) {
+  return doc(db, "profiles", uid, "publicMeta", "genres");
+}
+
+// Denormalized so a friend (or the public, if this profile is public) can
+// see genre preferences on the profile card without profiles/{uid} itself
+// being readable — same best-effort, non-blocking reasoning as
+// syncPublicProfile.
+function syncGenrePrefs(uid: string, genreIds: number[]): void {
+  setDoc(genrePrefsRef(uid), { genreIds }).catch((err) =>
+    console.warn("Falha ao sincronizar gêneros favoritos (não bloqueia):", err)
+  );
+}
+
 // Best-effort: reflect this user's current name/avatar/TAG on every
 // existing friendship's denormalized snapshot, so friends see the change
 // without needing to re-add each other. A failure here never undoes the
@@ -68,7 +82,7 @@ async function syncFriendshipSnapshots(uid: string, patch: Record<string, unknow
 
 const HANDLE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 
-// Generates a stable, shareable handle like "#L7nnoca" — first letter of
+// Generates a stable, shareable handle like "@L7nnoca" — first letter of
 // the name plus 6 random characters. Not reserved/checked for uniqueness
 // against other handles: at 36^6 (~2.2 billion) combinations a collision is
 // negligible at this app's scale, so we skip the extra transaction/lookup
@@ -79,7 +93,46 @@ function generateHandle(name: string): string {
   for (let i = 0; i < 6; i++) {
     suffix += HANDLE_CHARS[Math.floor(Math.random() * HANDLE_CHARS.length)];
   }
-  return `#${firstLetter}${suffix}`;
+  return `@${firstLetter}${suffix}`;
+}
+
+// One-time: TAGs used to start with "#"; @mentions now reuse the same TAG
+// for both finding friends and mentioning them in posts/comments, so every
+// TAG needs the "@" prefix. Migrates a legacy "#"-prefixed handle the same
+// transactional way as changeHandle. Best-effort and non-blocking — same
+// reasoning as syncPublicProfile, a failure here just means the account
+// keeps its old-prefix handle until the next login retries it.
+async function migrateHandlePrefix(uid: string, profile: User): Promise<User> {
+  if (!profile.handle || profile.handle.startsWith("@")) return profile;
+
+  const newHandle = `@${profile.handle.slice(1)}`;
+  const newTagLower = newHandle.toLowerCase();
+  const oldTagLower = profile.handle.toLowerCase();
+  let migrated = false;
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const targetSnap = await tx.get(handleDocRef(newTagLower));
+      if (targetSnap.exists() && (targetSnap.data() as { uid: string }).uid !== uid) {
+        // Extremely unlikely collision between the old "#" and new "@"
+        // handle spaces — skip the rename rather than fail login.
+        return;
+      }
+      tx.set(handleDocRef(newTagLower), { uid });
+      tx.delete(handleDocRef(oldTagLower));
+      tx.set(profileRef(uid), { ...profile, handle: newHandle });
+      tx.set(publicProfileRef(uid), { handle: newHandle, handleLower: newTagLower }, { merge: true });
+      migrated = true;
+    });
+  } catch (err) {
+    console.warn("Falha ao migrar TAG de # pra @ (tenta de novo no próximo login):", err);
+    return profile;
+  }
+
+  if (!migrated) return profile;
+  const next = { ...profile, handle: newHandle };
+  syncFriendshipSnapshots(uid, { [`profiles.${uid}.handle`]: newHandle });
+  return next;
 }
 
 // Keeps the cross-user-readable slice of a profile in sync. Never include
@@ -98,6 +151,7 @@ function syncPublicProfile(uid: string, profile: User): void {
     handle,
     handleLower: handle.toLowerCase(),
     avatarUrl: profile.avatarUrl ?? null,
+    coverUrl: profile.coverUrl ?? null,
     profileVisibility: resolvePrivacy(profile).profileVisibility,
   }).catch((err) => console.warn("Falha ao sincronizar perfil público (não bloqueia login):", err));
 }
@@ -170,8 +224,11 @@ async function ensureProfile(firebaseUser: FirebaseUser, fallbackName?: string):
     // searchable again since this branch used to only run once. Cheap and
     // idempotent, so unconditional is fine.
     syncPublicProfile(firebaseUser.uid, existing);
+    syncGenrePrefs(firebaseUser.uid, existing.favoriteGenreIds);
 
     let profile = existing;
+
+    profile = await migrateHandlePrefix(firebaseUser.uid, profile);
 
     if (!profile.ratingsMigratedV2) {
       try {
@@ -270,6 +327,7 @@ export function useAuth() {
           handle: trimmedTag,
           handleLower: tagLower,
           avatarUrl: null,
+          coverUrl: null,
           profileVisibility: resolvePrivacy(profile).profileVisibility,
         });
       });
@@ -309,6 +367,7 @@ export function useAuth() {
 
     await setDoc(profileRef(uid), next);
     syncPublicProfile(uid, next);
+    syncGenrePrefs(uid, next.favoriteGenreIds);
     setProfile(next);
 
     if (

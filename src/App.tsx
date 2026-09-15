@@ -5,9 +5,11 @@ import { resolvePrivacy } from "./types";
 import { useAuthContext } from "./contexts/AuthContext";
 import { useCatalog } from "./hooks/useCatalog";
 import { useFriends } from "./hooks/useFriends";
-import { useFeed, createPost, notifyFriendsOfNewPost } from "./hooks/useFeed";
+import { useFeed, createPost, notifyFriendsOfNewPost, notifyMentions, mentionTargetUids } from "./hooks/useFeed";
 import { useNotifications } from "./hooks/useNotifications";
-import { MediaFormModal, type MediaSeed } from "./components/MediaFormModal";
+import { extractMentions, type MentionCandidate } from "./utils/mentions";
+import { normalizeHandle } from "./utils/handle";
+import { MediaFormModal, type MediaSeed, type WatchedWith, NO_WATCHED_WITH } from "./components/MediaFormModal";
 import { ProfileModal } from "./components/ProfileModal";
 import { PersonalDataModal } from "./components/PersonalDataModal";
 import { GenrePreferencesModal } from "./components/GenrePreferencesModal";
@@ -63,6 +65,7 @@ export default function App() {
     null
   );
   const [shareModalItem, setShareModalItem] = useState<MediaItem | null>(null);
+  const [shareWatchedWith, setShareWatchedWith] = useState<WatchedWith>(NO_WATCHED_WITH);
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -84,6 +87,22 @@ export default function App() {
   const { posts: feedPosts, loading: feedLoading, trending: feedTrending } = useFeed(
     firebaseUser?.uid ?? null,
     friendUids
+  );
+
+  // @mention candidates are always the CURRENT user's own friends — a
+  // mention can only ever point at someone this account is connected to,
+  // same trust boundary as the notification it creates (see firestore.rules).
+  const mentionCandidates: MentionCandidate[] = useMemo(
+    () =>
+      friends
+        .map((f): MentionCandidate | null => {
+          const targetUid = friendOtherUid(f);
+          const info = f.profiles[targetUid];
+          if (!info?.handle) return null;
+          return { uid: targetUid, name: info.name, handle: normalizeHandle(info.handle), avatarUrl: info.avatarUrl };
+        })
+        .filter((c): c is MentionCandidate => c !== null),
+    [friends, friendOtherUid]
   );
 
   const {
@@ -302,16 +321,19 @@ export default function App() {
     });
   }, [tmdbResults, typeFilter]);
 
-  function attemptShareOnWatched(item: MediaItem, prevStatus: MediaStatus | undefined) {
+  function attemptShareOnWatched(item: MediaItem, prevStatus: MediaStatus | undefined, watchedWith: WatchedWith = NO_WATCHED_WITH) {
     if (!profile || !firebaseUser) return;
     if (prevStatus === "Visto" || item.status !== "Visto") return; // only on the transition INTO Visto
 
     const { autoShareOnWatched, feedVisibility } = resolvePrivacy(profile);
     if (autoShareOnWatched) {
-      publishActivity(item, feedVisibility).catch((err) => console.error("Falha ao publicar no feed:", err));
+      publishActivity(item, feedVisibility, item.rating, item.review, watchedWith).catch((err) =>
+        console.error("Falha ao publicar no feed:", err)
+      );
     } else {
       setShareError(null);
       setShareModalItem(item);
+      setShareWatchedWith(watchedWith);
     }
   }
 
@@ -319,9 +341,20 @@ export default function App() {
     item: MediaItem,
     visibility: PostVisibility,
     rating = item.rating,
-    review = item.review
+    review = item.review,
+    watchedWith: WatchedWith = NO_WATCHED_WITH
   ): Promise<string> {
     if (!firebaseUser || !profile) throw new Error("not-authenticated");
+    const fromText = extractMentions(review, mentionCandidates);
+    const mentionUids = new Set(fromText.mentions.map((m) => m.uid));
+    const mentions = [...fromText.mentions];
+    for (const m of watchedWith.mentions) {
+      if (!mentionUids.has(m.uid)) {
+        mentionUids.add(m.uid);
+        mentions.push(m);
+      }
+    }
+    const mentionsAll = fromText.mentionsAll || watchedWith.mentionsAll;
     const postId = await createPost({
       authorUid: firebaseUser.uid,
       authorName: profile.name,
@@ -337,6 +370,8 @@ export default function App() {
       createdAt: Date.now(),
       likeCount: 0,
       commentCount: 0,
+      mentions,
+      mentionsAll,
     });
 
     if (visibility !== "private") {
@@ -346,12 +381,20 @@ export default function App() {
         { uid: firebaseUser.uid, name: profile.name, avatarUrl: profile.avatarUrl },
         { title: item.title, coverUrl: item.coverUrl }
       ).catch((err) => console.warn("Falha ao notificar amigos do novo post:", err));
+
+      notifyMentions(
+        mentionTargetUids(mentions, mentionsAll, mentionCandidates.map((c) => c.uid)),
+        new Set(),
+        postId,
+        { uid: firebaseUser.uid, name: profile.name, avatarUrl: profile.avatarUrl },
+        { title: item.title, coverUrl: item.coverUrl }
+      ).catch((err) => console.warn("Falha ao notificar menções do novo post:", err));
     }
 
     return postId;
   }
 
-  function handleSave(item: MediaItem) {
+  function handleSave(item: MediaItem, watchedWith: WatchedWith = NO_WATCHED_WITH) {
     const prevStatus = editingItem?.id === item.id ? editingItem.status : items.find((i) => i.id === item.id)?.status;
     saveItem(item).catch((err) => console.error("Falha ao salvar item:", err));
 
@@ -365,7 +408,7 @@ export default function App() {
         .catch(() => {});
     }
 
-    attemptShareOnWatched(item, prevStatus);
+    attemptShareOnWatched(item, prevStatus, watchedWith);
   }
 
   function handleStatusChange(id: string, status: MediaStatus) {
@@ -456,11 +499,12 @@ export default function App() {
     setShareSubmitting(true);
     setShareError(null);
     try {
-      await publishActivity(shareModalItem, visibility, rating, review);
+      await publishActivity(shareModalItem, visibility, rating, review, shareWatchedWith);
       if (rating !== shareModalItem.rating || review !== shareModalItem.review) {
         saveItem({ ...shareModalItem, rating, review }).catch(() => {});
       }
       setShareModalItem(null);
+      setShareWatchedWith(NO_WATCHED_WITH);
     } catch (err) {
       console.error("Falha ao publicar no feed:", err);
       setShareError("Não foi possível compartilhar agora. Tente de novo em instantes.");
@@ -542,6 +586,7 @@ export default function App() {
             posts={feedPosts}
             feedLoading={feedLoading}
             trending={feedTrending}
+            mentionCandidates={mentionCandidates}
             onOpenProfile={setPublicProfileTarget}
             onOpenDetails={setDetailsTarget}
           />
@@ -606,6 +651,7 @@ export default function App() {
         open={modalOpen}
         onClose={closeModal}
         onSave={handleSave}
+        mentionCandidates={mentionCandidates}
         initialItem={editingItem}
         seed={seedDraft}
       />
@@ -653,11 +699,14 @@ export default function App() {
       <ShareActivityModal
         item={shareModalItem}
         defaultVisibility={resolvePrivacy(profile).feedVisibility}
+        mentionCandidates={mentionCandidates}
+        watchedWith={shareWatchedWith}
         submitting={shareSubmitting}
         error={shareError}
         onShare={handleShare}
         onSkip={() => {
           setShareModalItem(null);
+          setShareWatchedWith(NO_WATCHED_WITH);
           setShareError(null);
         }}
       />
@@ -665,7 +714,7 @@ export default function App() {
       <PublicProfileModal
         targetUid={publicProfileTarget}
         currentUid={firebaseUser.uid}
-        currentUserInfo={{ name: profile.name, avatarUrl: profile.avatarUrl }}
+        genres={genres}
         friendshipWith={friendshipWith}
         isRequestedByMe={isRequestedByMe}
         onSendRequest={handleSendFriendRequest}
@@ -681,6 +730,7 @@ export default function App() {
         highlightCommentId={postDetailTarget?.commentId}
         currentUid={firebaseUser.uid}
         currentUserInfo={{ name: profile.name, avatarUrl: profile.avatarUrl }}
+        mentionCandidates={mentionCandidates}
         onClose={() => setPostDetailTarget(null)}
         onOpenProfile={setPublicProfileTarget}
         onOpenDetails={setDetailsTarget}

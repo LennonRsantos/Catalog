@@ -4,6 +4,7 @@ import { Loader2, X } from "lucide-react";
 import { db } from "../services/firebase";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post } from "../types";
+import type { MentionCandidate } from "../utils/mentions";
 import { PostCard } from "./PostCard";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 
@@ -12,6 +13,7 @@ interface PostDetailModalProps {
   highlightCommentId?: string;
   currentUid: string;
   currentUserInfo: { name: string; avatarUrl?: string };
+  mentionCandidates: MentionCandidate[];
   onClose: () => void;
   onOpenProfile: (uid: string) => void;
   onOpenDetails: (target: DetailsTarget) => void;
@@ -22,6 +24,7 @@ export function PostDetailModal({
   highlightCommentId,
   currentUid,
   currentUserInfo,
+  mentionCandidates,
   onClose,
   onOpenProfile,
   onOpenDetails,
@@ -78,6 +81,7 @@ export function PostDetailModal({
             post={post}
             currentUid={currentUid}
             currentUserInfo={currentUserInfo}
+            mentionCandidates={mentionCandidates}
             onOpenProfile={onOpenProfile}
             onOpenDetails={onOpenDetails}
             initiallyOpenComments

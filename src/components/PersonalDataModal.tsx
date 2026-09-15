@@ -14,14 +14,21 @@ import {
 import type { User } from "../types";
 import { useAuthContext } from "../contexts/AuthContext";
 import { translateAuthError } from "../services/firebase";
-import { AvatarUploadError, deleteAvatarFile, uploadAvatarFile } from "../services/storage";
+import {
+  AvatarUploadError,
+  CoverUploadError,
+  deleteAvatarFile,
+  deleteCoverFile,
+  uploadAvatarFile,
+  uploadCoverFile,
+} from "../services/storage";
 import { isValidBirthdate, isValidEmail, isValidTag } from "../utils/validation";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 
 function mapTagError(err: unknown): string {
   const code = (err as { code?: string } | null)?.code;
   if (code === "app/tag-taken") return "Essa TAG já está em uso. Escolha outra.";
-  if (code === "app/invalid-tag") return "TAG inválida. Use # seguido de 3 a 20 letras, números ou _.";
+  if (code === "app/invalid-tag") return "TAG inválida. Use @ seguido de 3 a 20 letras, números ou _.";
   return "Não foi possível salvar a TAG. Tente de novo.";
 }
 
@@ -68,10 +75,15 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState(profile.coverUrl ?? "");
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverRemoved, setCoverRemoved] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [birthdateError, setBirthdateError] = useState<string | null>(null);
   const [mainState, setMainState] = useState<SectionState>(IDLE);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const [tagOpen, setTagOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
@@ -101,6 +113,10 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
     setAvatarFile(null);
     setAvatarRemoved(false);
     setAvatarError(null);
+    setCoverPreview(profile.coverUrl ?? "");
+    setCoverFile(null);
+    setCoverRemoved(false);
+    setCoverError(null);
     setNameError(null);
     setBirthdateError(null);
     setMainState(IDLE);
@@ -149,6 +165,30 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function handleCoverFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setCoverError("Selecione um arquivo de imagem.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setCoverError("Imagem muito grande. Máximo de 8MB.");
+      return;
+    }
+    setCoverError(null);
+    setCoverFile(file);
+    setCoverRemoved(false);
+    setCoverPreview(URL.createObjectURL(file));
+  }
+
+  function handleRemoveCover() {
+    setCoverFile(null);
+    setCoverRemoved(true);
+    setCoverPreview("");
+    if (coverInputRef.current) coverInputRef.current.value = "";
+  }
+
   async function handleMainSubmit(e: React.FormEvent) {
     e.preventDefault();
     const nameErr = name.trim().length < 2 ? "Informe seu nome completo." : null;
@@ -168,13 +208,27 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
         avatarUrl = undefined;
       }
 
-      onSave({ ...profile, name: name.trim(), birthdate: birthdate || undefined, avatarUrl });
+      let coverUrl = profile.coverUrl;
+      if (coverFile && firebaseUser) {
+        coverUrl = await uploadCoverFile(firebaseUser.uid, coverFile);
+        deleteCoverFile(profile.coverUrl).catch(() => {});
+      } else if (coverRemoved) {
+        deleteCoverFile(profile.coverUrl).catch(() => {});
+        coverUrl = undefined;
+      }
+
+      onSave({ ...profile, name: name.trim(), birthdate: birthdate || undefined, avatarUrl, coverUrl });
       setAvatarFile(null);
       setAvatarRemoved(false);
+      setCoverFile(null);
+      setCoverRemoved(false);
       setMainState({ submitting: false, error: null, success: "Salvo!" });
       setTimeout(() => setMainState(IDLE), 2000);
     } catch (err) {
-      const message = err instanceof AvatarUploadError ? err.message : "Não foi possível salvar. Tente de novo.";
+      const message =
+        err instanceof AvatarUploadError || err instanceof CoverUploadError
+          ? err.message
+          : "Não foi possível salvar. Tente de novo.";
       setMainState({ submitting: false, error: message, success: null });
     }
   }
@@ -185,7 +239,7 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
     if (!isValidTag(trimmed)) {
       setTagState({
         submitting: false,
-        error: "Use # seguido de 3 a 20 letras, números ou _.",
+        error: "Use @ seguido de 3 a 20 letras, números ou _.",
         success: null,
       });
       return;
@@ -300,6 +354,48 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
         </div>
 
         <form onSubmit={handleMainSubmit} className="space-y-5">
+          {/* Capa do perfil */}
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">Capa do Perfil</h3>
+            <div className="relative h-24 w-full overflow-hidden rounded-lg border border-stone-800 bg-stone-950">
+              {coverPreview ? (
+                <img src={coverPreview} alt="Capa" className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full bg-linear-to-br from-stone-800 via-stone-900 to-stone-950" />
+              )}
+              <div className="absolute bottom-2 right-2 flex gap-2">
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur transition hover:bg-black/80"
+                >
+                  <Camera size={13} /> Alterar capa
+                </button>
+                {coverPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveCover}
+                    className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur transition hover:border-red-900 hover:text-[#d97a86]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {coverError && (
+              <p className="flex items-center gap-1.5 text-xs text-[#d97a86]">
+                <AlertTriangle size={12} /> {coverError}
+              </p>
+            )}
+          </section>
+
           {/* Foto de perfil */}
           <section className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">Foto de Perfil</h3>
@@ -449,7 +545,7 @@ export function PersonalDataModal({ open, onClose, profile, onSave }: PersonalDa
                 <input
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="#suatag"
+                  placeholder="@suatag"
                   aria-label="Nova TAG"
                   autoComplete="off"
                   spellCheck={false}

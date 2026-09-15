@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, Heart, MessageCircle, Rss, User as UserIcon, X } from "lucide-react";
+import { AtSign, Bell, Check, Heart, MessageCircle, Rss, User as UserIcon, X } from "lucide-react";
 import type { AppNotification, Friendship, MediaItem } from "../types";
 import { timeAgo } from "../utils/time";
 import { useEscapeClose } from "../hooks/useEscapeClose";
@@ -16,11 +16,16 @@ interface NotificationBellProps {
   onMarkAllNotificationsRead: () => void;
 }
 
-const NOTIFICATION_ICON = { new_post: Rss, like: Heart, comment: MessageCircle } as const;
+const NOTIFICATION_ICON = { new_post: Rss, like: Heart, comment: MessageCircle, mention: AtSign } as const;
 
 function notificationText(n: AppNotification): string {
   if (n.type === "new_post") return `${n.actorName} publicou uma nova recomendação.`;
   if (n.type === "like") return `${n.actorName} curtiu sua publicação.`;
+  if (n.type === "mention") {
+    return n.commentId
+      ? `${n.actorName} mencionou você em um comentário.`
+      : `${n.actorName} mencionou você em uma publicação.`;
+  }
   return `${n.actorName} comentou: "${n.commentPreview}"`;
 }
 

@@ -1,6 +1,7 @@
 import { Flame, Loader2, Rss } from "lucide-react";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post } from "../types";
+import type { MentionCandidate } from "../utils/mentions";
 import { PostCard } from "./PostCard";
 
 interface FeedTabProps {
@@ -15,6 +16,7 @@ interface FeedTabProps {
     mediaType: "movie" | "tv";
     count: number;
   }[];
+  mentionCandidates: MentionCandidate[];
   onOpenProfile: (uid: string) => void;
   onOpenDetails: (target: DetailsTarget) => void;
 }
@@ -25,6 +27,7 @@ export function FeedTab({
   posts,
   feedLoading,
   trending,
+  mentionCandidates,
   onOpenProfile,
   onOpenDetails,
 }: FeedTabProps) {
@@ -77,6 +80,7 @@ export function FeedTab({
               post={post}
               currentUid={uid}
               currentUserInfo={currentUserInfo}
+              mentionCandidates={mentionCandidates}
               onOpenProfile={onOpenProfile}
               onOpenDetails={onOpenDetails}
             />

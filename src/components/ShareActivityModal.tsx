@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Loader2, Share2, X } from "lucide-react";
+import { AlertCircle, Loader2, Share2, Users, X } from "lucide-react";
 import type { MediaItem, PostVisibility } from "../types";
+import { formatWatchedWithLabel, type MentionCandidate, type ResolvedMention } from "../utils/mentions";
 import { StarRating } from "./StarRating";
+import { MentionField } from "./MentionField";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 
 const VISIBILITY_OPTIONS: { value: PostVisibility; label: string }[] = [
@@ -13,6 +15,8 @@ const VISIBILITY_OPTIONS: { value: PostVisibility; label: string }[] = [
 interface ShareActivityModalProps {
   item: MediaItem | null;
   defaultVisibility: PostVisibility;
+  mentionCandidates: MentionCandidate[];
+  watchedWith?: { mentions: ResolvedMention[]; mentionsAll: boolean };
   submitting?: boolean;
   error?: string | null;
   onShare: (rating: number, review: string, visibility: PostVisibility) => void;
@@ -22,11 +26,14 @@ interface ShareActivityModalProps {
 export function ShareActivityModal({
   item,
   defaultVisibility,
+  mentionCandidates,
+  watchedWith,
   submitting = false,
   error = null,
   onShare,
   onSkip,
 }: ShareActivityModalProps) {
+  const watchedWithLabel = watchedWith ? formatWatchedWithLabel(watchedWith.mentions, watchedWith.mentionsAll) : null;
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState("");
   const [visibility, setVisibility] = useState<PostVisibility>(defaultVisibility);
@@ -69,6 +76,11 @@ export function ShareActivityModal({
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white">{item.title}</p>
             <p className="text-xs text-stone-500">Você marcou como visto</p>
+            {watchedWithLabel && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-[#bd3347]">
+                <Users size={11} /> Assistiu com {watchedWithLabel}
+              </p>
+            )}
           </div>
         </div>
 
@@ -84,13 +96,20 @@ export function ShareActivityModal({
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400">
               Comentário
             </label>
-            <textarea
+            <MentionField
               value={review}
-              onChange={(e) => setReview(e.target.value)}
-              placeholder="O que você achou? (opcional)"
+              onChange={setReview}
+              candidates={mentionCandidates}
+              multiline
               rows={3}
+              placeholder="O que você achou? (opcional)"
               className="w-full resize-none rounded-lg border border-stone-800 bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
             />
+            {mentionCandidates.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-stone-500">
+                Assistiu com alguém? Digite <span className="text-[#bd3347]">@</span> pra marcar quem viu com você.
+              </p>
+            )}
           </div>
 
           <div>

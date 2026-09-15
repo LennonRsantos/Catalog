@@ -23,8 +23,12 @@ async function searchPublicProfiles(term: string, excludeUid: string): Promise<P
   const trimmed = term.trim();
   if (!trimmed) return [];
 
-  const byHandle = trimmed.startsWith("#");
-  const lower = (byHandle ? trimmed.slice(1) : trimmed).toLowerCase();
+  const byHandle = trimmed.startsWith("@");
+  // handleLower is stored WITH the "@" (e.g. "@l7nnoca"), so the cursor
+  // must keep it too — stripping it here used to make startAt() position
+  // past every handle (since "@" sorts before any letter), silently
+  // returning nothing for every handle search.
+  const lower = trimmed.toLowerCase();
   if (!lower) return [];
 
   // Findable regardless of profileVisibility — private accounts must still
@@ -98,7 +102,7 @@ export function FriendsPanel({
             type="search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nome ou #TAG…"
+            placeholder="Buscar por nome ou @TAG…"
             aria-label="Buscar por nome ou TAG"
             autoComplete="off"
             spellCheck={false}

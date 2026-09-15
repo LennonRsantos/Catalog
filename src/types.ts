@@ -41,11 +41,13 @@ export interface User {
   favoriteGenreIds: number[];
   role: UserRole;
   avatarUrl?: string;
+  coverUrl?: string; // banner shown behind the avatar on the profile
   birthdate?: string; // ISO "YYYY-MM-DD"
-  // Stable handle assigned at signup (e.g. "#L7nnoca") for finding this
-  // person and sending friend requests — unlike name, it's unique-ish and
-  // never changes. Optional so profiles predating this feature keep
-  // working until backfilled on next login (see useAuth.ts).
+  // Stable handle assigned at signup (e.g. "@L7nnoca") for finding this
+  // person, sending friend requests, and @mentioning them in posts/
+  // comments — unlike name, it's unique-ish and never changes. Optional so
+  // profiles predating this feature keep working until backfilled on next
+  // login (see useAuth.ts).
   handle?: string;
   // Privacy — optional so existing profiles predating this feature keep working.
   // Always read through resolvePrivacy(profile), never these fields directly.
@@ -84,6 +86,15 @@ export interface FavoriteEntry {
   favoriteRank?: number;
 }
 
+// A resolved @mention, stored on the post/comment so any viewer can render
+// it as a link without needing the author's own friend list (which only
+// the author's client has). See utils/mentions.ts.
+export interface PostMention {
+  uid: string;
+  handle: string; // "@"-prefixed
+  name: string; // denormalized so "assistiu com X" can render without a lookup
+}
+
 export interface Post {
   id: string;
   authorUid: string;
@@ -100,6 +111,8 @@ export interface Post {
   createdAt: number;
   likeCount: number;
   commentCount: number;
+  mentions?: PostMention[];
+  mentionsAll?: boolean; // review used the special "@todos" mention
 }
 
 export interface PostComment {
@@ -110,9 +123,11 @@ export interface PostComment {
   text: string;
   createdAt: number;
   editedAt?: number;
+  mentions?: PostMention[];
+  mentionsAll?: boolean;
 }
 
-export type NotificationType = "new_post" | "like" | "comment";
+export type NotificationType = "new_post" | "like" | "comment" | "mention";
 
 export interface AppNotification {
   id: string;
@@ -155,6 +170,7 @@ export interface PublicProfile {
   handle: string;
   handleLower: string;
   avatarUrl?: string;
+  coverUrl?: string;
   profileVisibility: ProfileVisibility;
 }
 

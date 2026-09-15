@@ -18,6 +18,8 @@ import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post, PostComment, PostVisibility } from "../types";
 import { StarRating } from "./StarRating";
 import { LikesListModal } from "./LikesListModal";
+import { MentionField } from "./MentionField";
+import { MentionText } from "./MentionText";
 import {
   addComment,
   deleteComment,
@@ -28,6 +30,7 @@ import {
 } from "../hooks/useFeed";
 import { timeAgo } from "../utils/time";
 import { useEscapeClose } from "../hooks/useEscapeClose";
+import { extractMentions, formatWatchedWithLabel, type MentionCandidate } from "../utils/mentions";
 
 const VISIBILITY_OPTIONS: { value: PostVisibility; label: string }[] = [
   { value: "public", label: "Público" },
@@ -39,6 +42,7 @@ interface PostCardProps {
   post: Post;
   currentUid: string;
   currentUserInfo: { name: string; avatarUrl?: string };
+  mentionCandidates: MentionCandidate[];
   onOpenProfile: (uid: string) => void;
   onOpenDetails: (target: DetailsTarget) => void;
   initiallyOpenComments?: boolean;
@@ -49,6 +53,7 @@ export function PostCard({
   post,
   currentUid,
   currentUserInfo,
+  mentionCandidates,
   onOpenProfile,
   onOpenDetails,
   initiallyOpenComments = false,
@@ -67,6 +72,7 @@ export function PostCard({
   const [editReview, setEditReview] = useState(post.review);
   const [editVisibility, setEditVisibility] = useState<PostVisibility>(post.visibility);
   const isAuthor = post.authorUid === currentUid;
+  const watchedWith = formatWatchedWithLabel(post.mentions ?? [], post.mentionsAll ?? false);
 
   useEscapeClose(() => setMenuOpen(false), menuOpen);
 
@@ -93,13 +99,20 @@ export function PostCard({
     e.preventDefault();
     const text = commentText.trim();
     if (!text) return;
+    const { mentions, mentionsAll } = extractMentions(text, mentionCandidates);
     setCommentText("");
-    addComment(post.id, {
-      authorUid: currentUid,
-      authorName: currentUserInfo.name,
-      authorAvatarUrl: currentUserInfo.avatarUrl,
-      text,
-    }).catch((err) => console.error("Falha ao comentar:", err));
+    addComment(
+      post.id,
+      {
+        authorUid: currentUid,
+        authorName: currentUserInfo.name,
+        authorAvatarUrl: currentUserInfo.avatarUrl,
+        text,
+        mentions,
+        mentionsAll,
+      },
+      mentionCandidates.map((c) => c.uid)
+    ).catch((err) => console.error("Falha ao comentar:", err));
   }
 
   function startEditComment(comment: PostComment) {
@@ -115,7 +128,10 @@ export function PostCard({
   function saveEditComment(commentId: string) {
     const text = editText.trim();
     if (!text) return;
-    updateComment(post.id, commentId, text).catch((err) => console.error("Falha ao editar comentário:", err));
+    const { mentions, mentionsAll } = extractMentions(text, mentionCandidates);
+    updateComment(post.id, commentId, text, mentions, mentionsAll).catch((err) =>
+      console.error("Falha ao editar comentário:", err)
+    );
     setEditingCommentId(null);
     setEditText("");
   }
@@ -138,10 +154,14 @@ export function PostCard({
   }
 
   function saveEditPost() {
+    const review = editReview.trim();
+    const { mentions, mentionsAll } = extractMentions(review, mentionCandidates);
     updatePostContent(post.id, {
       rating: editRating,
-      review: editReview.trim(),
+      review,
       visibility: editVisibility,
+      mentions,
+      mentionsAll,
     }).catch((err) => console.error("Falha ao editar publicação:", err));
     setEditingPost(false);
   }
@@ -167,7 +187,13 @@ export function PostCard({
             )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-white hover:underline">{post.authorName}</p>
+            <p className="text-sm font-semibold text-white hover:underline">
+              {post.authorName}
+              <span className="font-normal text-stone-400">
+                {" "}
+                · assistiu{watchedWith ? ` com ${watchedWith}` : ""}
+              </span>
+            </p>
             <p className="text-[11px] text-stone-500">{timeAgo(post.createdAt)}</p>
           </div>
         </button>
@@ -237,11 +263,13 @@ export function PostCard({
             <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-stone-500">
               Comentário
             </label>
-            <textarea
+            <MentionField
               value={editReview}
-              onChange={(e) => setEditReview(e.target.value)}
+              onChange={setEditReview}
+              candidates={mentionCandidates}
+              multiline
               rows={3}
-              placeholder="O que você achou? (opcional)"
+              placeholder="O que você achou? (opcional) — use @ pra mencionar"
               className="w-full resize-none rounded-lg border border-stone-800 bg-stone-950 px-3 py-2 text-sm text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
             />
           </div>
@@ -285,7 +313,14 @@ export function PostCard({
         </div>
       ) : (
         post.review.trim() && (
-          <p className="mt-3 whitespace-pre-wrap text-sm text-stone-300">{post.review}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm text-stone-300">
+            <MentionText
+              text={post.review}
+              mentions={post.mentions}
+              mentionsAll={post.mentionsAll}
+              onOpenProfile={onOpenProfile}
+            />
+          </p>
         )
       )}
 
@@ -339,11 +374,12 @@ export function PostCard({
                 <div className="min-w-0 flex-1">
                   {isEditing ? (
                     <div className="flex items-center gap-1.5">
-                      <input
+                      <MentionField
                         value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
+                        onChange={setEditText}
+                        candidates={mentionCandidates}
                         autoFocus
-                        className="flex-1 rounded-lg border border-stone-800 bg-stone-950 px-2 py-1 text-xs text-white outline-none focus:border-[#a32638]"
+                        className="w-full rounded-lg border border-stone-800 bg-stone-950 px-2 py-1 text-xs text-white outline-none focus:border-[#a32638]"
                       />
                       <button
                         onClick={() => saveEditComment(c.id)}
@@ -361,13 +397,23 @@ export function PostCard({
                       </button>
                     </div>
                   ) : (
-                    <button onClick={() => onOpenProfile(c.authorUid)} className="text-left">
-                      <p className="text-xs">
-                        <span className="font-semibold text-white">{c.authorName}</span>{" "}
-                        <span className="text-stone-300">{c.text}</span>
-                        {c.editedAt && <span className="text-stone-600"> (editado)</span>}
-                      </p>
-                    </button>
+                    <p className="text-xs">
+                      <button
+                        onClick={() => onOpenProfile(c.authorUid)}
+                        className="font-semibold text-white hover:underline"
+                      >
+                        {c.authorName}
+                      </button>{" "}
+                      <span className="text-stone-300">
+                        <MentionText
+                          text={c.text}
+                          mentions={c.mentions}
+                          mentionsAll={c.mentionsAll}
+                          onOpenProfile={onOpenProfile}
+                        />
+                      </span>
+                      {c.editedAt && <span className="text-stone-600"> (editado)</span>}
+                    </p>
                   )}
                 </div>
 
@@ -394,11 +440,12 @@ export function PostCard({
           })}
 
           <form onSubmit={handleSubmitComment} className="flex items-center gap-2 pt-1">
-            <input
+            <MentionField
               value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Escreva um comentário…"
-              className="flex-1 rounded-lg border border-stone-800 bg-stone-950 px-3 py-1.5 text-xs text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
+              onChange={setCommentText}
+              candidates={mentionCandidates}
+              placeholder="Escreva um comentário… (@ pra mencionar)"
+              className="w-full rounded-lg border border-stone-800 bg-stone-950 px-3 py-1.5 text-xs text-white placeholder-stone-600 outline-none focus:border-[#a32638]"
             />
             <button
               type="submit"
