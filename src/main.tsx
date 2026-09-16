@@ -1,5 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
 import App from './App.tsx'
 import { testTmdbConnection } from './services/tmdb'
@@ -20,5 +22,14 @@ createRoot(document.getElementById('root')!).render(
     <AuthProvider>
       <App />
     </AuthProvider>
+    <ToastContainer
+      position="bottom-right"
+      autoClose={4000}
+      hideProgressBar={false}
+      newestOnTop
+      closeOnClick
+      pauseOnHover
+      theme="dark"
+    />
   </StrictMode>,
 )

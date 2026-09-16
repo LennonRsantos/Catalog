@@ -73,3 +73,50 @@ textarea {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* react-toastify dark theme, tuned to match this app's card/accent palette
+   instead of the library's built-in "dark" preset. */
+.Toastify__toast {
+  align-items: flex-start;
+  border-radius: 0.75rem;
+  border: 1px solid #292524;
+  background: #1c1917;
+  color: #f5f1eb;
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+}
+
+.Toastify__toast-icon {
+  opacity: 0.9;
+}
+
+.Toastify__progress-bar {
+  opacity: 0.5;
+}
+
+.Toastify__progress-bar--success {
+  background: var(--garnet-500);
+}
+
+.Toastify__progress-bar--error {
+  background: #dc2626;
+}
+
+.Toastify__progress-bar--info {
+  background: #57534e;
+}
+
+.Toastify__progress-bar--warning {
+  background: var(--gold-500);
+}
+
+.Toastify__close-button {
+  color: #a8a29e;
+  opacity: 0.7;
+}
+
+.Toastify__close-button:hover {
+  color: #f5f1eb;
+  opacity: 1;
+}

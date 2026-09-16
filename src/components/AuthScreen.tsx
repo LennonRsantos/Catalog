@@ -4,6 +4,7 @@ import { getBackdropUrl } from "../services/tmdb";
 import { translateAuthError } from "../services/supabase";
 import { useAuthContext } from "../contexts/AuthContext";
 import { isValidEmail, isValidTag } from "../utils/validation";
+import { notifyRegistered } from "../utils/toast";
 
 interface AuthScreenProps {
   backdropPath?: string | null;
@@ -78,6 +79,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
     try {
       if (mode === "signup") {
         await signUp(name.trim(), email.trim(), password, tag.trim());
+        notifyRegistered();
       } else if (mode === "login") {
         await logIn(email.trim(), password);
       } else {

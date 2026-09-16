@@ -6,6 +6,7 @@ import { useAuthContext } from "./contexts/AuthContext";
 import { useCatalog } from "./hooks/useCatalog";
 import { useFriends } from "./hooks/useFriends";
 import { useFeed, publishPost, updatePostContent } from "./hooks/useFeed";
+import { notifyError, notifyRemoved, notifySaved, notifyUpdated } from "./utils/toast";
 import { useNotifications } from "./hooks/useNotifications";
 import { extractMentions, type MentionCandidate } from "./utils/mentions";
 import { normalizeHandle } from "./utils/handle";
@@ -336,9 +337,10 @@ export default function App() {
 
     const { autoShareOnWatched, feedVisibility } = resolvePrivacy(profile);
     if (autoShareOnWatched) {
-      publishActivity(item, feedVisibility, item.rating, item.review, watchedWith).catch((err) =>
-        console.error("Falha ao publicar no feed:", err)
-      );
+      publishActivity(item, feedVisibility, item.rating, item.review, watchedWith).catch((err) => {
+        console.error("Falha ao publicar no feed:", err);
+        notifyError();
+      });
     } else {
       setShareError(null);
       setShareModalItem(item);
@@ -367,7 +369,7 @@ export default function App() {
 
     // new_post + @mention notifications happen server-side inside the RPC,
     // atomically with the insert — nothing else to trigger here.
-    return publishPost({
+    const postId = await publishPost({
       tmdbId: item.tmdbId,
       mediaType: item.type === "Série" ? "tv" : "movie",
       type: item.type,
@@ -379,12 +381,21 @@ export default function App() {
       mentions,
       mentionsAll,
     });
+    notifySaved("Publicado no feed!");
+    return postId;
   }
 
   function handleSave(item: MediaItem, watchedWith: WatchedWith = NO_WATCHED_WITH) {
     const wasEditingSameItem = editingItem?.id === item.id ? editingItem : undefined;
     const prevStatus = wasEditingSameItem ? wasEditingSameItem.status : items.find((i) => i.id === item.id)?.status;
-    saveItem(item).catch((err) => console.error("Falha ao salvar item:", err));
+    saveItem(item)
+      .then(() => {
+        if (wasEditingSameItem) notifyUpdated();
+      })
+      .catch((err) => {
+        console.error("Falha ao salvar item:", err);
+        notifyError();
+      });
 
     if (item.tmdbId && item.type === "Filme" && !item.runtimeMinutes) {
       getDetails(item.tmdbId, "movie")
@@ -439,7 +450,12 @@ export default function App() {
   }
 
   function handleDelete(id: string) {
-    deleteItem(id).catch((err) => console.error("Falha ao remover item:", err));
+    deleteItem(id)
+      .then(() => notifyRemoved())
+      .catch((err) => {
+        console.error("Falha ao remover item:", err);
+        notifyError();
+      });
   }
 
   function handleRestore(restoredItems: MediaItem[]) {
@@ -484,7 +500,12 @@ export default function App() {
   }
 
   function handleSaveProfile(user: User) {
-    saveProfile(user).catch((err) => console.error("Falha ao salvar perfil:", err));
+    saveProfile(user)
+      .then(() => notifySaved())
+      .catch((err) => {
+        console.error("Falha ao salvar perfil:", err);
+        notifyError();
+      });
   }
 
   function handleSendFriendRequest(targetUid: string) {
