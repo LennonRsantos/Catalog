@@ -503,7 +503,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Clapperboard className="text-[#a32638]" size={20} />
             <span className="font-display text-lg font-semibold tracking-tight text-white sm:text-xl">
-              Meu Catálogo
+              Catalog
             </span>
           </div>
 

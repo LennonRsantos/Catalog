@@ -120,7 +120,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <div className="flex items-center gap-2">
             <Clapperboard className="text-[#a32638]" size={24} />
-            <span className="font-display text-2xl font-semibold tracking-tight text-white">Meu Catálogo</span>
+            <span className="font-display text-2xl font-semibold tracking-tight text-white">Catalog</span>
           </div>
           <p className="text-sm text-stone-400">
             {mode === "signup"

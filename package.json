@@ -1,5 +1,5 @@
 {
-  "name": "catalogo-filmes",
+  "name": "catalog",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
+    "chart.js": "^4.5.1",
     "lucide-react": "^1.41.0",
     "react": "^19.2.8",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {

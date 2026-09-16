@@ -166,7 +166,7 @@ export function ProgramasTab({
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-          Meu Catálogo
+          Catalog
         </h1>
         <p className="mt-1.5 max-w-xl text-sm text-stone-500">
           O que você está assistindo, quer ver e já viu.
