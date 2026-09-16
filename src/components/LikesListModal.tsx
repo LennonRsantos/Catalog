@@ -3,6 +3,7 @@ import { Heart, Loader2, User as UserIcon, X } from "lucide-react";
 import { supabase } from "../services/supabase";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import type { PostLike } from "../types";
+import { fetchLiveAvatars } from "../utils/liveAvatars";
 
 interface LikesListModalProps {
   postId: string | null;
@@ -27,7 +28,10 @@ export function LikesListModal({ postId, onClose, onOpenProfile }: LikesListModa
         .order("created_at", { ascending: false });
       if (cancelled) return;
       if (!error) {
-        setLikes((data ?? []).map((row) => ({ uid: row.liker_uid, name: row.name, avatarUrl: row.avatar_url ?? undefined, createdAt: new Date(row.created_at).getTime() })));
+        const mapped = (data ?? []).map((row) => ({ uid: row.liker_uid, name: row.name, avatarUrl: row.avatar_url ?? undefined, createdAt: new Date(row.created_at).getTime() }));
+        const avatars = await fetchLiveAvatars(mapped.map((l) => l.uid));
+        if (cancelled) return;
+        setLikes(mapped.map((l) => ({ ...l, avatarUrl: avatars.get(l.uid) ?? l.avatarUrl })));
       }
       setLoading(false);
     }

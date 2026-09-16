@@ -31,6 +31,7 @@ import {
 import { timeAgo } from "../utils/time";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { extractMentions, formatWatchedWithLabel, type MentionCandidate } from "../utils/mentions";
+import { fetchLiveAvatars } from "../utils/liveAvatars";
 
 const VISIBILITY_OPTIONS: { value: PostVisibility; label: string }[] = [
   { value: "public", label: "Público" },
@@ -125,7 +126,12 @@ export function PostCard({
         .eq("post_id", post.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
-      if (!error) setComments((data ?? []).map(rowToComment));
+      if (!error) {
+        const mapped = (data ?? []).map(rowToComment);
+        const avatars = await fetchLiveAvatars(mapped.map((c) => c.authorUid));
+        if (cancelled) return;
+        setComments(mapped.map((c) => ({ ...c, authorAvatarUrl: avatars.get(c.authorUid) ?? c.authorAvatarUrl })));
+      }
     }
 
     refetchComments();

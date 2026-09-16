@@ -7,6 +7,7 @@ import type { Post } from "../types";
 import type { MentionCandidate } from "../utils/mentions";
 import { PostCard } from "./PostCard";
 import { useEscapeClose } from "../hooks/useEscapeClose";
+import { fetchLiveAvatars } from "../utils/liveAvatars";
 
 interface PostDetailModalProps {
   postId: string | null;
@@ -41,8 +42,14 @@ export function PostDetailModal({
       try {
         const { data } = await supabase.from("posts").select("*").eq("id", postId as string).maybeSingle();
         if (cancelled) return;
-        if (data) setPost(rowToPost(data));
-        else setNotFound(true);
+        if (data) {
+          const p = rowToPost(data);
+          const avatars = await fetchLiveAvatars([p.authorUid]);
+          if (cancelled) return;
+          setPost({ ...p, authorAvatarUrl: avatars.get(p.authorUid) ?? p.authorAvatarUrl });
+        } else {
+          setNotFound(true);
+        }
       } catch {
         if (!cancelled) setNotFound(true);
       } finally {

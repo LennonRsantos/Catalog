@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabase";
 import type { MediaType, Post, PostMention, PostVisibility } from "../types";
 import type { Json, Tables, TablesUpdate } from "../services/database.types";
+import { fetchLiveAvatars } from "../utils/liveAvatars";
 
 // PostMention[] is structurally a valid jsonb value but has no index
 // signature, which is all Json requires it to prove — this cast is that
@@ -66,7 +67,10 @@ export function useFeed(uid: string | null, friendUids: string[], limitCount = 6
         // posts_select_visible enforces server-side — RLS silently drops a
         // friend's "private" post from these results on its own, so the
         // query doesn't need to re-encode that logic client-side.
-        setPosts((data ?? []).map(rowToPost));
+        const mapped = (data ?? []).map(rowToPost);
+        const avatars = await fetchLiveAvatars(mapped.map((p) => p.authorUid));
+        if (cancelled) return;
+        setPosts(mapped.map((p) => ({ ...p, authorAvatarUrl: avatars.get(p.authorUid) ?? p.authorAvatarUrl })));
       }
       setLoading(false);
     }
