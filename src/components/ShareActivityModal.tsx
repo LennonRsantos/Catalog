@@ -21,6 +21,10 @@ interface ShareActivityModalProps {
   error?: string | null;
   onShare: (rating: number, review: string, visibility: PostVisibility) => void;
   onSkip: () => void;
+  // "update" reuses this same rating/comment/visibility editor to revise a
+  // post that already exists (e.g. after editing a watched item's rating or
+  // review) instead of publishing a new one — same UI, different copy.
+  mode?: "publish" | "update";
 }
 
 export function ShareActivityModal({
@@ -32,6 +36,7 @@ export function ShareActivityModal({
   error = null,
   onShare,
   onSkip,
+  mode = "publish",
 }: ShareActivityModalProps) {
   const watchedWithLabel = watchedWith ? formatWatchedWithLabel(watchedWith.mentions, watchedWith.mentionsAll) : null;
   const [rating, setRating] = useState(0);
@@ -60,7 +65,8 @@ export function ShareActivityModal({
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
-            <Share2 size={18} className="text-[#a32638]" /> Compartilhar no Feed
+            <Share2 size={18} className="text-[#a32638]" />
+            {mode === "update" ? "Atualizar Publicação" : "Compartilhar no Feed"}
           </h2>
           <button
             onClick={onSkip}
@@ -75,7 +81,9 @@ export function ShareActivityModal({
           <img src={item.coverUrl} alt={item.title} className="h-24 w-16 shrink-0 rounded-lg object-cover" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white">{item.title}</p>
-            <p className="text-xs text-stone-500">Você marcou como visto</p>
+            <p className="text-xs text-stone-500">
+              {mode === "update" ? "Sua avaliação mudou" : "Você marcou como visto"}
+            </p>
             {watchedWithLabel && (
               <p className="mt-1 flex items-center gap-1 text-xs text-[#bd3347]">
                 <Users size={11} /> Assistiu com {watchedWithLabel}
@@ -148,7 +156,7 @@ export function ShareActivityModal({
               disabled={submitting}
               className="flex-1 rounded-lg border border-stone-800 bg-stone-950 py-3 text-sm font-medium text-stone-300 transition hover:border-stone-700 hover:text-white disabled:opacity-50"
             >
-              Não compartilhar
+              {mode === "update" ? "Não atualizar" : "Não compartilhar"}
             </button>
             <button
               type="button"
@@ -157,7 +165,13 @@ export function ShareActivityModal({
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#a32638] py-3 text-sm font-semibold text-white transition hover:bg-[#bd3347] active:scale-[0.99] disabled:opacity-60"
             >
               {submitting && <Loader2 size={15} className="animate-spin" />}
-              {submitting ? "Compartilhando…" : "Compartilhar"}
+              {mode === "update"
+                ? submitting
+                  ? "Atualizando…"
+                  : "Atualizar publicação"
+                : submitting
+                  ? "Compartilhando…"
+                  : "Compartilhar"}
             </button>
           </div>
         </div>

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clapperboard, Loader2 } from "lucide-react";
-import type { Genre, MediaItem, MediaStatus, MediaType, PostVisibility, User } from "./types";
+import type { Genre, MediaItem, MediaStatus, MediaType, Post, PostVisibility, User } from "./types";
 import { resolvePrivacy } from "./types";
 import { useAuthContext } from "./contexts/AuthContext";
 import { useCatalog } from "./hooks/useCatalog";
 import { useFriends } from "./hooks/useFriends";
-import { useFeed, publishPost } from "./hooks/useFeed";
+import { useFeed, publishPost, updatePostContent } from "./hooks/useFeed";
 import { useNotifications } from "./hooks/useNotifications";
 import { extractMentions, type MentionCandidate } from "./utils/mentions";
 import { normalizeHandle } from "./utils/handle";
@@ -68,6 +68,13 @@ export default function App() {
   const [shareWatchedWith, setShareWatchedWith] = useState<WatchedWith>(NO_WATCHED_WITH);
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+
+  // Offered after editing an already-"Visto" item whose rating/review
+  // changed and that already has a post in the feed — lets the user push
+  // the new rating/comment to that existing post instead of leaving it stale.
+  const [republishTarget, setRepublishTarget] = useState<{ item: MediaItem; post: Post } | null>(null);
+  const [republishSubmitting, setRepublishSubmitting] = useState(false);
+  const [republishError, setRepublishError] = useState<string | null>(null);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [genresLoading, setGenresLoading] = useState(true);
 
@@ -375,7 +382,8 @@ export default function App() {
   }
 
   function handleSave(item: MediaItem, watchedWith: WatchedWith = NO_WATCHED_WITH) {
-    const prevStatus = editingItem?.id === item.id ? editingItem.status : items.find((i) => i.id === item.id)?.status;
+    const wasEditingSameItem = editingItem?.id === item.id ? editingItem : undefined;
+    const prevStatus = wasEditingSameItem ? wasEditingSameItem.status : items.find((i) => i.id === item.id)?.status;
     saveItem(item).catch((err) => console.error("Falha ao salvar item:", err));
 
     if (item.tmdbId && item.type === "Filme" && !item.runtimeMinutes) {
@@ -389,6 +397,27 @@ export default function App() {
     }
 
     attemptShareOnWatched(item, prevStatus, watchedWith);
+    attemptRepublishOnEdit(item, wasEditingSameItem);
+  }
+
+  // Only fires for an edit (not a fresh add) of an item that was ALREADY
+  // "Visto" before and after the edit — the transition-into-Visto case is
+  // attemptShareOnWatched's job, not this one.
+  function attemptRepublishOnEdit(item: MediaItem, previous: MediaItem | undefined) {
+    if (!authUser) return;
+    if (!previous || previous.status !== "Visto" || item.status !== "Visto") return;
+    if (item.rating === previous.rating && item.review === previous.review) return;
+    if (!item.tmdbId) return;
+
+    const mediaType = item.type === "Série" ? "tv" : "movie";
+    const existingPost = feedPosts
+      .filter((p) => p.authorUid === authUser.uid && p.tmdbId === item.tmdbId && p.mediaType === mediaType)
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+
+    if (existingPost) {
+      setRepublishError(null);
+      setRepublishTarget({ item, post: existingPost });
+    }
   }
 
   function handleStatusChange(id: string, status: MediaStatus) {
@@ -484,6 +513,26 @@ export default function App() {
     } finally {
       setShareSubmitting(false);
     }
+  }
+
+  async function handleRepublish(rating: number, review: string, visibility: PostVisibility) {
+    if (!republishTarget) return;
+    setRepublishSubmitting(true);
+    setRepublishError(null);
+    try {
+      await updatePostContent(republishTarget.post.id, { rating, review, visibility });
+      setRepublishTarget(null);
+    } catch (err) {
+      console.error("Falha ao atualizar publicação:", err);
+      setRepublishError("Não foi possível atualizar agora. Tente de novo em instantes.");
+    } finally {
+      setRepublishSubmitting(false);
+    }
+  }
+
+  function handleSkipRepublish() {
+    setRepublishTarget(null);
+    setRepublishError(null);
   }
 
   if (authLoading) {
@@ -681,6 +730,17 @@ export default function App() {
           setShareWatchedWith(NO_WATCHED_WITH);
           setShareError(null);
         }}
+      />
+
+      <ShareActivityModal
+        mode="update"
+        item={republishTarget?.item ?? null}
+        defaultVisibility={republishTarget?.post.visibility ?? resolvePrivacy(profile).feedVisibility}
+        mentionCandidates={mentionCandidates}
+        submitting={republishSubmitting}
+        error={republishError}
+        onShare={handleRepublish}
+        onSkip={handleSkipRepublish}
       />
 
       <PublicProfileModal
