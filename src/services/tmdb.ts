@@ -93,17 +93,39 @@ export async function getGenres(): Promise<Genre[]> {
   return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export async function getRecommendationsByGenres(
   genreIds: number[],
   mediaType: "movie" | "tv" = "movie"
 ): Promise<TMDBMovie[]> {
   if (genreIds.length === 0) return [];
 
-  const data = await tmdbFetch<{ results: TMDBMovie[] }>(`/discover/${mediaType}`, {
-    with_genres: genreIds.join(","),
+  const params = {
+    with_genres: genreIds.join("|"), // pipe = OR (any of these genres); comma would require ALL of them
     sort_by: "popularity.desc",
-  });
-  return withMediaType(data.results, mediaType);
+    "vote_count.gte": "50",
+    "vote_average.gte": "6",
+  };
+
+  const pages = await Promise.all([
+    tmdbFetch<{ results: TMDBMovie[] }>(`/discover/${mediaType}`, { ...params, page: "1" }),
+    tmdbFetch<{ results: TMDBMovie[] }>(`/discover/${mediaType}`, { ...params, page: "2" }),
+  ]);
+
+  const byId = new Map<number, TMDBMovie>();
+  for (const page of pages) {
+    for (const result of page.results) byId.set(result.id, result);
+  }
+
+  return shuffle(withMediaType([...byId.values()], mediaType));
 }
 
 export interface CastMember {

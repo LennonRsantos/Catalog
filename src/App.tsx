@@ -157,18 +157,20 @@ export default function App() {
   }, [authUser, profile]);
 
   function likedGenreIdsFor(mediaType: MediaType): number[] {
-    const freq = new Map<number, number>();
+    const score = new Map<number, number>();
     for (const item of items) {
-      if (item.type === mediaType && item.status === "Visto" && item.rating >= 8) {
-        for (const genreId of item.genreIds ?? []) {
-          freq.set(genreId, (freq.get(genreId) ?? 0) + 1);
-        }
+      if (item.type !== mediaType || item.status !== "Visto" || item.rating <= 0) continue;
+      const weight = item.rating >= 8 ? 1 : item.rating <= 4 ? -1 : 0;
+      if (weight === 0) continue;
+      for (const genreId of item.genreIds ?? []) {
+        score.set(genreId, (score.get(genreId) ?? 0) + weight);
       }
     }
-    return Array.from(freq.entries())
+    return Array.from(score.entries())
+      .filter(([, s]) => s > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([genreId]) => genreId)
-      .slice(0, 6);
+      .slice(0, 4);
   }
 
   const likedMovieGenreIds = useMemo(() => likedGenreIdsFor("Filme"), [items]);
