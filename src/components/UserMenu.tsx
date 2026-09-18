@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, LogOut, ShieldCheck, Sparkles, Upload, User as UserIcon } from "lucide-react";
+import { Download, Lightbulb, LogOut, ShieldAlert, ShieldCheck, Sparkles, Upload, User as UserIcon } from "lucide-react";
 import type { MediaItem, User } from "../types";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 
@@ -9,6 +9,8 @@ interface UserMenuProps {
   onOpenPersonalData: () => void;
   onOpenGenres: () => void;
   onOpenPrivacy: () => void;
+  onOpenFeedback: () => void;
+  onOpenAdminPanel: () => void;
   onRestore: (items: MediaItem[]) => void;
   onLogout: () => void;
 }
@@ -19,6 +21,8 @@ export function UserMenu({
   onOpenPersonalData,
   onOpenGenres,
   onOpenPrivacy,
+  onOpenFeedback,
+  onOpenAdminPanel,
   onRestore,
   onLogout,
 }: UserMenuProps) {
@@ -86,9 +90,9 @@ export function UserMenu({
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-white">
                   {profile.name}
-                  {profile.role === "admin" && (
+                  {profile.role === "owner" && (
                     <span className="rounded-full bg-[#a32638] px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
-                      Admin
+                      Owner
                     </span>
                   )}
                 </p>
@@ -128,6 +132,16 @@ export function UserMenu({
               </button>
 
               <button
+                onClick={() => {
+                  onOpenFeedback();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-stone-800"
+              >
+                <Lightbulb size={15} className="text-stone-500" /> Sugestões e Bugs
+              </button>
+
+              <button
                 onClick={handleExport}
                 className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-stone-800"
               >
@@ -139,6 +153,20 @@ export function UserMenu({
                 <input type="file" accept="application/json" onChange={handleRestoreFile} className="hidden" />
               </label>
             </div>
+
+            {profile.role === "owner" && (
+              <div className="border-t border-stone-800 py-1">
+                <button
+                  onClick={() => {
+                    onOpenAdminPanel();
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-stone-800"
+                >
+                  <ShieldAlert size={15} className="text-stone-500" /> Painel Administrativo
+                </button>
+              </div>
+            )}
 
             <div className="border-t border-stone-800 py-1">
               <button

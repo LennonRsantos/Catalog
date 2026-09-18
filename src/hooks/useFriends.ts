@@ -43,18 +43,31 @@ async function attachProfiles(rows: FriendshipRow[], uid: string): Promise<Frien
   });
 }
 
+export interface FriendSuggestion {
+  uid: string;
+  name: string;
+  handle: string | null;
+  avatarUrl?: string;
+  mutualCount: number;
+}
+
 export function useFriends(uid: string | null) {
   const [friendships, setFriendships] = useState<Friendship[]>([]);
   const [loading, setLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState<FriendSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
   useEffect(() => {
     if (!uid) {
       setFriendships([]);
       setLoading(false);
+      setSuggestions([]);
+      setSuggestionsLoading(false);
       return;
     }
 
     setLoading(true);
+    setSuggestionsLoading(true);
     let cancelled = false;
 
     async function refetch() {
@@ -72,18 +85,48 @@ export function useFriends(uid: string | null) {
       setLoading(false);
     }
 
+    // Recomputed on the same trigger as friendships (any accept/decline/send
+    // changes who's already a friend or has a pending request, which the RPC
+    // excludes) — see 20260918114804_suggested_friends.sql for the query.
+    async function refetchSuggestions() {
+      const { data, error } = await supabase.rpc("suggested_friends", { p_limit: 10 });
+      if (cancelled) return;
+      if (error) {
+        console.error("Falha ao carregar sugestões de amigos:", error);
+        setSuggestions([]);
+      } else {
+        setSuggestions(
+          (data ?? []).map((row) => ({
+            uid: row.uid,
+            name: row.name,
+            handle: row.handle,
+            avatarUrl: row.avatar_url ?? undefined,
+            mutualCount: row.mutual_count,
+          }))
+        );
+      }
+      setSuggestionsLoading(false);
+    }
+
     refetch();
+    refetchSuggestions();
 
     // Realtime's per-channel filter only supports a single equality — a
     // friendship row can have `uid` in either uid_a or uid_b, so two
     // channels (one per side) instead of trying to express the OR in one.
     const channelA = supabase
       .channel(`friendships:a:${uid}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `uid_a=eq.${uid}` }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `uid_a=eq.${uid}` }, () => {
+        refetch();
+        refetchSuggestions();
+      })
       .subscribe();
     const channelB = supabase
       .channel(`friendships:b:${uid}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `uid_b=eq.${uid}` }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `uid_b=eq.${uid}` }, () => {
+        refetch();
+        refetchSuggestions();
+      })
       .subscribe();
 
     return () => {
@@ -159,5 +202,7 @@ export function useFriends(uid: string | null) {
     acceptRequest,
     declineRequest,
     removeFriend,
+    suggestions,
+    suggestionsLoading,
   };
 }

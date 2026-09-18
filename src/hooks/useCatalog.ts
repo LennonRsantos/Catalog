@@ -19,6 +19,7 @@ function rowToItem(row: CatalogRow): MediaItem {
     genreIds: row.genre_ids ?? undefined,
     runtimeMinutes: row.runtime_minutes ?? undefined,
     progressSeason: row.progress_season ?? undefined,
+    progressEpisode: row.progress_episode ?? undefined,
     progressMinutes: row.progress_minutes ?? undefined,
     progressSeconds: row.progress_seconds ?? undefined,
     isFavorite: row.is_favorite,
@@ -41,6 +42,7 @@ function itemToRow(uid: string, item: MediaItem) {
     genre_ids: item.genreIds ?? null,
     runtime_minutes: item.runtimeMinutes ?? null,
     progress_season: item.progressSeason ?? null,
+    progress_episode: item.progressEpisode ?? null,
     progress_minutes: item.progressMinutes ?? null,
     progress_seconds: item.progressSeconds ?? null,
     is_favorite: item.isFavorite ?? false,
@@ -129,6 +131,7 @@ export function useCatalog(uid: string | null) {
     }
     if (status !== "Assistindo") {
       patch.progress_season = null;
+      patch.progress_episode = null;
       patch.progress_minutes = null;
       patch.progress_seconds = null;
     }
@@ -144,13 +147,14 @@ export function useCatalog(uid: string | null) {
 
   async function updateProgress(
     id: string,
-    progress: { progressSeason?: number; progressMinutes?: number; progressSeconds?: number }
+    progress: { progressSeason?: number; progressEpisode?: number; progressMinutes?: number; progressSeconds?: number }
   ) {
     if (!uid) return;
     const { error } = await supabase
       .from("catalog_items")
       .update({
         progress_season: progress.progressSeason ?? null,
+        progress_episode: progress.progressEpisode ?? null,
         progress_minutes: progress.progressMinutes ?? null,
         progress_seconds: progress.progressSeconds ?? null,
       })

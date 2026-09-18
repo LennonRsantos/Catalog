@@ -52,6 +52,7 @@ export function ProfileModal({
       email: email.trim(),
       favoriteGenreIds,
       role: initialUser?.role ?? "user",
+      status: initialUser?.status ?? "active",
     });
     onClose();
   }

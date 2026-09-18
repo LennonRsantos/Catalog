@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Check, Loader2, Search, User as UserIcon, UserMinus, UserPlus, X } from "lucide-react";
+import { Check, Loader2, Search, Sparkles, User as UserIcon, UserMinus, UserPlus, X } from "lucide-react";
 import { supabase } from "../services/supabase";
 import type { Friendship, PublicProfile } from "../types";
 import type { Tables } from "../services/database.types";
+import type { FriendSuggestion } from "../hooks/useFriends";
 
 interface FriendsPanelProps {
   uid: string;
@@ -12,6 +13,8 @@ interface FriendsPanelProps {
   outgoing: Friendship[];
   otherUid: (f: Friendship) => string;
   friendshipWith: (targetUid: string) => Friendship | undefined;
+  suggestions: FriendSuggestion[];
+  suggestionsLoading: boolean;
   onSendRequest: (targetUid: string) => void;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
@@ -79,6 +82,8 @@ export function FriendsPanel({
   outgoing,
   otherUid,
   friendshipWith,
+  suggestions,
+  suggestionsLoading,
   onSendRequest,
   onAccept,
   onDecline,
@@ -254,6 +259,48 @@ export function FriendsPanel({
           </div>
         </section>
       )}
+
+      <section className="space-y-2">
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500">
+          <Sparkles size={12} className="text-[#d9a441]" /> Sugestões de Amigos
+        </h3>
+        {suggestionsLoading ? (
+          <div className="flex items-center gap-2 rounded-lg border border-stone-800 bg-stone-900/60 px-3 py-2.5 text-xs text-stone-500">
+            <Loader2 className="animate-spin" size={13} /> Procurando sugestões…
+          </div>
+        ) : suggestions.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-stone-800 px-3 py-6 text-center text-xs text-stone-500">
+            Nenhuma sugestão no momento. Sugestões aparecem com base em amigos em comum.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {suggestions.map((s) => (
+              <div
+                key={s.uid}
+                className="flex items-center gap-2.5 rounded-lg border border-stone-800 bg-stone-900/60 px-3 py-2"
+              >
+                <button onClick={() => onOpenProfile(s.uid)} className="flex flex-1 items-center gap-2.5 text-left">
+                  <AvatarCircle name={s.name} avatarUrl={s.avatarUrl} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-white">{s.name}</span>
+                    <span className="block truncate text-[11px] text-stone-500">
+                      {s.handle ?? ""}
+                      {s.handle ? " · " : ""}
+                      {s.mutualCount} {s.mutualCount === 1 ? "amigo em comum" : "amigos em comum"}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => onSendRequest(s.uid)}
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-[#a32638] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#bd3347]"
+                >
+                  <UserPlus size={12} /> Adicionar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">

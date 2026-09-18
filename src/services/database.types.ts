@@ -12,8 +12,84 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      admin_action_logs: {
+        Row: {
+          action: string
+          actor_uid: string
+          created_at: string
+          details: Json | null
+          id: string
+          target_uid: string | null
+        }
+        Insert: {
+          action: string
+          actor_uid: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_uid?: string | null
+        }
+        Update: {
+          action?: string
+          actor_uid?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_uid?: string | null
+        }
+        Relationships: []
+      }
+      app_settings: {
+        Row: {
+          feedback_enabled: boolean
+          id: boolean
+          maintenance_mode: boolean
+          signup_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          feedback_enabled?: boolean
+          id?: boolean
+          maintenance_mode?: boolean
+          signup_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          feedback_enabled?: boolean
+          id?: boolean
+          maintenance_mode?: boolean
+          signup_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       catalog_items: {
         Row: {
           cover_url: string
@@ -24,6 +100,7 @@ export type Database = {
           id: string
           is_favorite: boolean
           owner_uid: string
+          progress_episode: number | null
           progress_minutes: number | null
           progress_season: number | null
           progress_seconds: number | null
@@ -44,6 +121,7 @@ export type Database = {
           id: string
           is_favorite?: boolean
           owner_uid: string
+          progress_episode?: number | null
           progress_minutes?: number | null
           progress_season?: number | null
           progress_seconds?: number | null
@@ -64,6 +142,7 @@ export type Database = {
           id?: string
           is_favorite?: boolean
           owner_uid?: string
+          progress_episode?: number | null
           progress_minutes?: number | null
           progress_season?: number | null
           progress_seconds?: number | null
@@ -166,6 +245,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      feedback_submissions: {
+        Row: {
+          actual_behavior: string | null
+          admin_response: string | null
+          attachment_path: string | null
+          author_uid: string
+          category: string | null
+          created_at: string
+          description: string
+          expected_behavior: string | null
+          id: string
+          kind: string
+          priority: string | null
+          responded_at: string | null
+          status: string
+          steps_to_reproduce: string | null
+          title: string
+        }
+        Insert: {
+          actual_behavior?: string | null
+          admin_response?: string | null
+          attachment_path?: string | null
+          author_uid: string
+          category?: string | null
+          created_at?: string
+          description: string
+          expected_behavior?: string | null
+          id?: string
+          kind: string
+          priority?: string | null
+          responded_at?: string | null
+          status?: string
+          steps_to_reproduce?: string | null
+          title: string
+        }
+        Update: {
+          actual_behavior?: string | null
+          admin_response?: string | null
+          attachment_path?: string | null
+          author_uid?: string
+          category?: string | null
+          created_at?: string
+          description?: string
+          expected_behavior?: string | null
+          id?: string
+          kind?: string
+          priority?: string | null
+          responded_at?: string | null
+          status?: string
+          steps_to_reproduce?: string | null
+          title?: string
+        }
+        Relationships: []
       }
       friendships: {
         Row: {
@@ -508,6 +641,7 @@ export type Database = {
           name_lower: string | null
           profile_visibility: string
           role: string
+          status: string
         }
         Insert: {
           auto_share_on_watched?: boolean
@@ -525,6 +659,7 @@ export type Database = {
           name_lower?: string | null
           profile_visibility?: string
           role?: string
+          status?: string
         }
         Update: {
           auto_share_on_watched?: boolean
@@ -542,6 +677,7 @@ export type Database = {
           name_lower?: string | null
           profile_visibility?: string
           role?: string
+          status?: string
         }
         Relationships: []
       }
@@ -751,6 +887,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      suggested_friends: {
+        Args: { p_limit?: number }
+        Returns: {
+          avatar_url: string
+          handle: string
+          mutual_count: number
+          name: string
+          uid: string
+        }[]
+      }
       toggle_like: {
         Args: { p_post_id: string }
         Returns: {
@@ -886,6 +1032,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

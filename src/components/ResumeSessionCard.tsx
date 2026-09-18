@@ -44,7 +44,9 @@ export function ResumeSessionCard({
   const episodeLabel =
     item.type === "Série" && (item.progressSeason || item.progressMinutes || item.progressSeconds)
       ? [
-          item.progressSeason ? `T${item.progressSeason}` : null,
+          item.progressSeason
+            ? `T${item.progressSeason}${item.progressEpisode ? `E${item.progressEpisode}` : ""}`
+            : null,
           item.progressMinutes || item.progressSeconds
             ? formatWatchedTime(item.progressMinutes, item.progressSeconds)
             : null,

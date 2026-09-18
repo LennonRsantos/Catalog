@@ -15,6 +15,7 @@ export interface MediaItem {
   genreIds?: number[];
   runtimeMinutes?: number;
   progressSeason?: number;
+  progressEpisode?: number;
   progressMinutes?: number;
   progressSeconds?: number; // 0-59, remainder past progressMinutes
   // Explicit "this is a favorite" flag — a deliberate choice, independent of
@@ -30,7 +31,8 @@ export interface Genre {
   name: string;
 }
 
-export type UserRole = "admin" | "user";
+export type UserRole = "owner" | "user";
+export type ProfileStatus = "active" | "suspended";
 
 export type ProfileVisibility = "public" | "friends" | "private";
 export type PostVisibility = "public" | "friends" | "private";
@@ -40,6 +42,7 @@ export interface User {
   email: string;
   favoriteGenreIds: number[];
   role: UserRole;
+  status: ProfileStatus;
   avatarUrl?: string;
   coverUrl?: string; // banner shown behind the avatar on the profile
   birthdate?: string; // ISO "YYYY-MM-DD"

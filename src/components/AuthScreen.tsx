@@ -5,6 +5,7 @@ import { translateAuthError } from "../services/supabase";
 import { useAuthContext } from "../contexts/AuthContext";
 import { isValidEmail, isValidTag } from "../utils/validation";
 import { notifyRegistered } from "../utils/toast";
+import { useAppSettings } from "../hooks/useAppSettings";
 
 interface AuthScreenProps {
   backdropPath?: string | null;
@@ -34,6 +35,7 @@ function GoogleLogo() {
 
 export function AuthScreen({ backdropPath }: AuthScreenProps) {
   const { signUp, logIn, logInWithGoogle, resetPassword } = useAuthContext();
+  const { settings: appSettings } = useAppSettings();
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
   const [tag, setTag] = useState("");
@@ -57,6 +59,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
       if (!isValidEmail(email)) return "Informe um e-mail válido.";
       return null;
     }
+    if (mode === "signup" && !appSettings.signupEnabled) return "Cadastro temporariamente desativado.";
     if (mode === "signup" && name.trim().length < 2) return "Informe seu nome completo.";
     if (mode === "signup" && !isValidTag(tag))
       return "Informe uma TAG válida: @ seguido de 3 a 20 letras, números ou _.";
@@ -202,6 +205,12 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
         ) : (
           <>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {mode === "signup" && !appSettings.signupEnabled && (
+                <p className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-2.5 text-xs text-stone-400">
+                  Cadastro temporariamente desativado. Tente novamente mais tarde.
+                </p>
+              )}
+
               {mode === "signup" && (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-400" htmlFor="signup-name">
@@ -314,7 +323,7 @@ export function AuthScreen({ backdropPath }: AuthScreenProps) {
 
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || (mode === "signup" && !appSettings.signupEnabled)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#a32638] py-3 text-sm font-semibold text-white transition hover:bg-[#bd3347] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading && <Loader2 size={16} className="animate-spin" />}

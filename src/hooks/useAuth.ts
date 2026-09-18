@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
-import { DEFAULT_PROFILE_VISIBILITY, DEFAULT_FEED_VISIBILITY, type ProfileVisibility, type PostVisibility, type User, type UserRole } from "../types";
+import { DEFAULT_PROFILE_VISIBILITY, DEFAULT_FEED_VISIBILITY, type ProfileStatus, type ProfileVisibility, type PostVisibility, type User, type UserRole } from "../types";
 import { isValidTag } from "../utils/validation";
 import type { Tables } from "../services/database.types";
 
@@ -21,6 +21,7 @@ function rowToProfile(row: ProfileRow): User {
     email: row.email,
     favoriteGenreIds: row.favorite_genre_ids,
     role: row.role as UserRole,
+    status: row.status as ProfileStatus,
     avatarUrl: row.avatar_url ?? undefined,
     coverUrl: row.cover_url ?? undefined,
     birthdate: row.birthdate ?? undefined,

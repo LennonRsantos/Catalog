@@ -20,8 +20,11 @@ function formatProgress(item: MediaItem): string | null {
 
   if (item.type === "Série") {
     const time = hasTime ? formatWatchedTime(item.progressMinutes, item.progressSeconds) : null;
-    if (item.progressSeason && time) return `T${item.progressSeason} · ${time}`;
-    if (item.progressSeason) return `T${item.progressSeason}`;
+    const seasonEpisode = item.progressSeason
+      ? `T${item.progressSeason}${item.progressEpisode ? `E${item.progressEpisode}` : ""}`
+      : null;
+    if (seasonEpisode && time) return `${seasonEpisode} · ${time}`;
+    if (seasonEpisode) return seasonEpisode;
     return time;
   }
 

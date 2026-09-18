@@ -23,6 +23,29 @@ export interface WatchedWith {
 
 export const NO_WATCHED_WITH: WatchedWith = { mentions: [], mentionsAll: false };
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+// Single compact "HH:MM:SS" field replaces three separate hour/minute/second
+// boxes — formats the stored minutes+seconds pair for display, and parses it
+// back. Only a FULL match commits to the draft (see the input's onChange),
+// so a partial in-progress keystroke never gets reformatted mid-typing.
+function formatHMS(totalMinutes = 0, seconds = 0): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(seconds)}`;
+}
+
+function parseHMS(text: string): { minutes: number; seconds: number } | null {
+  const match = text.trim().match(/^(\d{1,3}):([0-5]?\d):([0-5]?\d)$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  return { minutes: hours * 60 + minutes, seconds };
+}
+
 interface MediaFormModalProps {
   open: boolean;
   onClose: () => void;
@@ -46,6 +69,7 @@ function emptyDraft(): Omit<MediaItem, "id" | "createdAt"> {
 
 export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initialItem, seed }: MediaFormModalProps) {
   const [draft, setDraft] = useState(emptyDraft());
+  const [timeText, setTimeText] = useState(formatHMS());
   const [watchWithEnabled, setWatchWithEnabled] = useState(false);
   const [watchWithText, setWatchWithText] = useState("");
 
@@ -63,15 +87,19 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
           genreIds: initialItem.genreIds,
           runtimeMinutes: initialItem.runtimeMinutes,
           progressSeason: initialItem.progressSeason,
+          progressEpisode: initialItem.progressEpisode,
           progressMinutes: initialItem.progressMinutes,
           progressSeconds: initialItem.progressSeconds,
           isFavorite: initialItem.isFavorite ?? false,
           favoriteRank: initialItem.favoriteRank,
         });
+        setTimeText(formatHMS(initialItem.progressMinutes, initialItem.progressSeconds));
       } else if (seed) {
         setDraft({ ...emptyDraft(), ...seed });
+        setTimeText(formatHMS());
       } else {
         setDraft(emptyDraft());
+        setTimeText(formatHMS());
       }
       // Who you watched with is a per-share annotation, not part of the
       // catalog item itself — never restored when reopening/editing.
@@ -91,18 +119,17 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
   const canRate = draft.status === "Visto";
   const isWatching = draft.status === "Assistindo";
 
-  const progressHours = Math.floor((draft.progressMinutes ?? 0) / 60);
-  const progressMinutesPart = (draft.progressMinutes ?? 0) % 60;
-  const progressSecondsPart = draft.progressSeconds ?? 0;
+  function handleTimeChange(raw: string) {
+    const cleaned = raw.replace(/[^0-9:]/g, "");
+    setTimeText(cleaned);
+    const parsed = parseHMS(cleaned);
+    if (parsed) setDraft({ ...draft, progressMinutes: parsed.minutes, progressSeconds: parsed.seconds });
+  }
 
-  function setProgressHours(hours: number) {
-    setDraft({ ...draft, progressMinutes: hours * 60 + progressMinutesPart });
-  }
-  function setProgressMinutesPart(minutes: number) {
-    setDraft({ ...draft, progressMinutes: progressHours * 60 + Math.min(59, minutes) });
-  }
-  function setProgressSecondsPart(seconds: number) {
-    setDraft({ ...draft, progressSeconds: Math.min(59, seconds) });
+  function handleTimeBlur() {
+    // Snap back to the last committed (zero-padded) value if what's left in
+    // the field didn't parse — e.g. the user deleted a digit and clicked away.
+    setTimeText(formatHMS(draft.progressMinutes, draft.progressSeconds));
   }
 
   function disableWatchWith() {
@@ -143,6 +170,7 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
         rating: canRate ? draft.rating : 0,
         review: canRate ? draft.review : "",
         progressSeason: isWatching && draft.type === "Série" ? draft.progressSeason : undefined,
+        progressEpisode: isWatching && draft.type === "Série" ? draft.progressEpisode : undefined,
         progressMinutes: isWatching ? draft.progressMinutes : undefined,
         progressSeconds: isWatching ? draft.progressSeconds : undefined,
         favoriteRank: draft.isFavorite ? draft.favoriteRank : undefined,
@@ -158,7 +186,7 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-t-2xl border border-stone-800 bg-stone-900 p-6 shadow-2xl sm:rounded-2xl"
+        className="relative w-full max-w-md rounded-t-2xl border border-stone-800 bg-stone-900 p-5 shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -260,12 +288,13 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
           </button>
 
           {isWatching && (
-            <div className="space-y-2 border-t border-stone-800 pt-4">
+            <div className="space-y-2.5 border-t border-stone-800 pt-4">
               <label className="block text-xs font-medium uppercase tracking-wide text-stone-400">
                 Onde Parou
               </label>
-              <div className="space-y-2">
-                {draft.type === "Série" && (
+
+              {draft.type === "Série" && (
+                <div className="grid grid-cols-2 gap-3">
                   <input
                     type="number"
                     min={0}
@@ -279,36 +308,35 @@ export function MediaFormModal({ open, onClose, onSave, mentionCandidates, initi
                     placeholder="Temporada"
                     className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
                   />
-                )}
-
-                <div className="grid grid-cols-3 gap-3">
                   <input
                     type="number"
                     min={0}
-                    value={progressHours || ""}
-                    onChange={(e) => setProgressHours(e.target.value ? Number(e.target.value) : 0)}
-                    placeholder="Horas"
-                    className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={progressMinutesPart || ""}
-                    onChange={(e) => setProgressMinutesPart(e.target.value ? Number(e.target.value) : 0)}
-                    placeholder="Minutos"
-                    className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={progressSecondsPart || ""}
-                    onChange={(e) => setProgressSecondsPart(e.target.value ? Number(e.target.value) : 0)}
-                    placeholder="Segundos"
+                    value={draft.progressEpisode ?? ""}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        progressEpisode: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                    placeholder="Episódio"
                     className="w-full rounded-lg bg-stone-950 px-3 py-2.5 text-sm text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
                   />
                 </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-stone-400">Tempo assistido</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={timeText}
+                  onChange={(e) => handleTimeChange(e.target.value)}
+                  onBlur={handleTimeBlur}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="00:00:00"
+                  maxLength={8}
+                  className="w-24 shrink-0 rounded-lg bg-stone-950 px-2 py-2 text-center text-sm tabular-nums text-white placeholder-stone-600 outline-none focus:ring-2 focus:ring-[#a32638]"
+                />
               </div>
             </div>
           )}

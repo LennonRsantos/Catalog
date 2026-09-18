@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clapperboard, Loader2 } from "lucide-react";
+import { Ban, Clapperboard, Loader2, Wrench } from "lucide-react";
 import type { Genre, MediaItem, MediaStatus, MediaType, Post, PostVisibility, User } from "./types";
 import { resolvePrivacy } from "./types";
 import { useAuthContext } from "./contexts/AuthContext";
@@ -15,6 +15,9 @@ import { ProfileModal } from "./components/ProfileModal";
 import { PersonalDataModal } from "./components/PersonalDataModal";
 import { GenrePreferencesModal } from "./components/GenrePreferencesModal";
 import { PrivacySettingsModal } from "./components/PrivacySettingsModal";
+import { FeedbackModal } from "./components/FeedbackModal";
+import { AdminPanelModal } from "./components/AdminPanelModal";
+import { useAppSettings } from "./hooks/useAppSettings";
 import { ShareActivityModal } from "./components/ShareActivityModal";
 import { PublicProfileModal } from "./components/PublicProfileModal";
 import { PostDetailModal } from "./components/PostDetailModal";
@@ -43,6 +46,7 @@ type TmdbMediaItem = TmdbMovie & { media_type: "movie" | "tv" };
 
 export default function App() {
   const { authUser, profile, loading: authLoading, saveProfile, logOut } = useAuthContext();
+  const { settings: appSettings } = useAppSettings();
   const { items, saveItem, updateStatus, updateRating, toggleFavorite, moveFavoriteRank, deleteItem, restoreItems } = useCatalog(
     authUser?.uid ?? null
   );
@@ -61,6 +65,8 @@ export default function App() {
   const [personalDataModalOpen, setPersonalDataModalOpen] = useState(false);
   const [genresModalOpen, setGenresModalOpen] = useState(false);
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [publicProfileTarget, setPublicProfileTarget] = useState<string | null>(null);
   const [postDetailTarget, setPostDetailTarget] = useState<{ postId: string; commentId?: string } | null>(
     null
@@ -90,6 +96,8 @@ export default function App() {
     acceptRequest: acceptFriendRequest,
     declineRequest: declineFriendRequest,
     removeFriend,
+    suggestions: friendSuggestions,
+    suggestionsLoading: friendSuggestionsLoading,
   } = useFriends(authUser?.uid ?? null);
 
   const { posts: feedPosts, loading: feedLoading, trending: feedTrending } = useFeed(
@@ -568,6 +576,34 @@ export default function App() {
     return <AuthScreen backdropPath={trending[0]?.backdrop_path ?? null} />;
   }
 
+  if (profile.status === "suspended") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#0e0c0a] px-6 text-center">
+        <Ban size={28} className="text-[#a32638]" />
+        <p className="text-sm font-medium text-white">Sua conta foi suspensa.</p>
+        <p className="max-w-xs text-xs text-stone-500">
+          Entre em contato com o administrador se acredita que isso é um engano.
+        </p>
+        <button
+          onClick={() => logOut().catch(() => {})}
+          className="mt-2 rounded-lg border border-stone-800 px-4 py-2 text-xs font-medium text-stone-300 hover:text-white"
+        >
+          Encerrar Sessão
+        </button>
+      </div>
+    );
+  }
+
+  if (appSettings.maintenanceMode && profile.role !== "owner") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#0e0c0a] px-6 text-center">
+        <Wrench size={28} className="text-[#a32638]" />
+        <p className="text-sm font-medium text-white">Em manutenção</p>
+        <p className="max-w-xs text-xs text-stone-500">Voltamos em breve. Tente novamente daqui a pouco.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0e0c0a] pb-20 sm:pb-8">
       <header className="sticky top-0 z-30 border-b border-stone-900 bg-[#0e0c0a]/90 backdrop-blur">
@@ -600,6 +636,8 @@ export default function App() {
               onOpenPersonalData={() => setPersonalDataModalOpen(true)}
               onOpenGenres={() => setGenresModalOpen(true)}
               onOpenPrivacy={() => setPrivacyModalOpen(true)}
+              onOpenFeedback={() => setFeedbackModalOpen(true)}
+              onOpenAdminPanel={() => setAdminPanelOpen(true)}
               onRestore={handleRestore}
               onLogout={() => logOut().catch((err) => console.error("Falha ao sair:", err))}
             />
@@ -645,6 +683,8 @@ export default function App() {
               outgoing={outgoingFriendRequests}
               otherUid={friendOtherUid}
               friendshipWith={friendshipWith}
+              suggestions={friendSuggestions}
+              suggestionsLoading={friendSuggestionsLoading}
               onSendRequest={handleSendFriendRequest}
               onAccept={(id) => acceptFriendRequest(id).catch((err) => console.error("Falha ao aceitar:", err))}
               onDecline={(id) => declineFriendRequest(id).catch((err) => console.error("Falha ao recusar:", err))}
@@ -736,6 +776,16 @@ export default function App() {
         onClose={() => setPrivacyModalOpen(false)}
         profile={profile}
         onSave={handleSaveProfile}
+      />
+
+      <FeedbackModal open={feedbackModalOpen} onClose={() => setFeedbackModalOpen(false)} uid={authUser.uid} />
+
+      <AdminPanelModal
+        open={adminPanelOpen}
+        onClose={() => setAdminPanelOpen(false)}
+        profile={profile}
+        authUid={authUser.uid}
+        onOpenProfile={setPublicProfileTarget}
       />
 
       <ShareActivityModal
