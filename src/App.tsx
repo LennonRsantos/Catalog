@@ -5,6 +5,7 @@ import { resolvePrivacy } from "./types";
 import { useAuthContext } from "./contexts/AuthContext";
 import { useCatalog } from "./hooks/useCatalog";
 import { useFriends } from "./hooks/useFriends";
+import { useFollows } from "./hooks/useFollows";
 import { useFeed, publishPost, updatePostContent } from "./hooks/useFeed";
 import { notifyError, notifyRemoved, notifySaved, notifyUpdated } from "./utils/toast";
 import { useNotifications } from "./hooks/useNotifications";
@@ -99,6 +100,8 @@ export default function App() {
     suggestions: friendSuggestions,
     suggestionsLoading: friendSuggestionsLoading,
   } = useFriends(authUser?.uid ?? null);
+
+  const { isFollowing, follow, unfollow } = useFollows(authUser?.uid ?? null);
 
   const { posts: feedPosts, loading: feedLoading, trending: feedTrending } = useFeed(
     authUser?.uid ?? null,
@@ -626,6 +629,7 @@ export default function App() {
               onDeclineFriend={(id) => declineFriendRequest(id).catch((err) => console.error("Falha ao recusar:", err))}
               notifications={notifications}
               onOpenPost={(postId, commentId) => setPostDetailTarget({ postId, commentId })}
+              onOpenProfile={setPublicProfileTarget}
               onMarkNotificationRead={(id) => markNotificationRead(id).catch(() => {})}
               onMarkAllNotificationsRead={() => markAllNotificationsRead().catch(() => {})}
             />
@@ -824,6 +828,9 @@ export default function App() {
         onAccept={(id) => acceptFriendRequest(id).catch((err) => console.error("Falha ao aceitar:", err))}
         onCancelOrDecline={(id) => declineFriendRequest(id).catch((err) => console.error("Falha:", err))}
         onRemove={(id) => removeFriend(id).catch((err) => console.error("Falha ao remover amigo:", err))}
+        isFollowing={isFollowing}
+        onFollow={(uid) => follow(uid).catch((err) => console.error("Falha ao seguir:", err))}
+        onUnfollow={(uid) => unfollow(uid).catch((err) => console.error("Falha ao deixar de seguir:", err))}
         onClose={() => setPublicProfileTarget(null)}
         onOpenDetails={setDetailsTarget}
       />

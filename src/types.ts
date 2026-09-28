@@ -124,7 +124,7 @@ export interface PostComment {
   mentionsAll?: boolean;
 }
 
-export type NotificationType = "new_post" | "like" | "comment" | "mention";
+export type NotificationType = "new_post" | "like" | "comment" | "mention" | "follow";
 
 export interface AppNotification {
   id: string;
@@ -132,9 +132,10 @@ export interface AppNotification {
   actorUid: string;
   actorName: string;
   actorAvatarUrl?: string;
-  postId: string;
-  postTitle: string;
-  postCoverUrl: string;
+  // Absent for "follow" notifications — there's no post involved.
+  postId?: string;
+  postTitle?: string;
+  postCoverUrl?: string;
   commentId?: string;
   commentPreview?: string;
   createdAt: number;

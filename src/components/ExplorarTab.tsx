@@ -67,6 +67,17 @@ export function ExplorarTab({
 }: ExplorarTabProps) {
   const isFiltering = selectedGenreIds.length > 0;
 
+  function matchesTypeFilter(item: TmdbMediaItem) {
+    if (typeFilter === "Todos") return true;
+    return typeFilter === "Filme" ? item.media_type === "movie" : item.media_type === "tv";
+  }
+
+  const filteredDiscoverResults = discoverResults.filter(matchesTypeFilter);
+  const filteredTrending = trending.filter(matchesTypeFilter);
+  const filteredPopular = popular.filter(matchesTypeFilter);
+  const showMovieRow = typeFilter !== "Série" && hasMovieFavorites;
+  const showSeriesRow = typeFilter !== "Filme" && hasSeriesFavorites;
+
   const genreScrollRef = useRef<HTMLDivElement>(null);
   const drag = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
 
@@ -106,7 +117,6 @@ export function ExplorarTab({
         onQueryChange={onQueryChange}
         typeFilter={typeFilter}
         onTypeFilterChange={onTypeFilterChange}
-        showTypeFilter={isSearching}
       />
 
       <div className="group/genres relative">
@@ -170,11 +180,11 @@ export function ExplorarTab({
             <div className="flex items-center gap-2 py-10 text-sm text-stone-500">
               <Loader2 className="animate-spin" size={16} /> Carregando…
             </div>
-          ) : discoverResults.length === 0 ? (
+          ) : filteredDiscoverResults.length === 0 ? (
             <p className="py-10 text-center text-sm text-stone-500">Nenhum resultado encontrado.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {discoverResults.map((item) => (
+              {filteredDiscoverResults.map((item) => (
                 <TmdbResultCard
                   key={`${item.media_type}-${item.id}`}
                   item={item}
@@ -187,7 +197,7 @@ export function ExplorarTab({
         </section>
       ) : (
         <>
-          {hasMovieFavorites && (
+          {showMovieRow && (
             <RecommendationsRow
               title="Filmes para Você"
               icon={Clapperboard}
@@ -198,7 +208,7 @@ export function ExplorarTab({
             />
           )}
 
-          {hasSeriesFavorites && (
+          {showSeriesRow && (
             <RecommendationsRow
               title="Séries para Você"
               icon={Tv}
@@ -212,7 +222,7 @@ export function ExplorarTab({
           <RecommendationsRow
             title="Em Alta esta Semana"
             icon={Flame}
-            items={trending}
+            items={filteredTrending}
             loading={trendingLoading}
             onAdd={onAdd}
             onOpenDetails={onOpenDetails}
@@ -221,7 +231,7 @@ export function ExplorarTab({
           <RecommendationsRow
             title="Populares"
             icon={Sparkles}
-            items={popular}
+            items={filteredPopular}
             loading={popularLoading}
             onAdd={onAdd}
             onOpenDetails={onOpenDetails}

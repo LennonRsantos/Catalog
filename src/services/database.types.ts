@@ -300,6 +300,67 @@ export type Database = {
         }
         Relationships: []
       }
+      follows: {
+        Row: {
+          created_at: string
+          followed_uid: string
+          follower_uid: string
+        }
+        Insert: {
+          created_at?: string
+          followed_uid: string
+          follower_uid: string
+        }
+        Update: {
+          created_at?: string
+          followed_uid?: string
+          follower_uid?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follows_followed_uid_fkey"
+            columns: ["followed_uid"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follows_followed_uid_fkey"
+            columns: ["followed_uid"]
+            isOneToOne: false
+            referencedRelation: "public_genre_prefs"
+            referencedColumns: ["uid"]
+          },
+          {
+            foreignKeyName: "follows_followed_uid_fkey"
+            columns: ["followed_uid"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["uid"]
+          },
+          {
+            foreignKeyName: "follows_follower_uid_fkey"
+            columns: ["follower_uid"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follows_follower_uid_fkey"
+            columns: ["follower_uid"]
+            isOneToOne: false
+            referencedRelation: "public_genre_prefs"
+            referencedColumns: ["uid"]
+          },
+          {
+            foreignKeyName: "follows_follower_uid_fkey"
+            columns: ["follower_uid"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["uid"]
+          },
+        ]
+      }
       friendships: {
         Row: {
           created_at: string
@@ -453,9 +514,9 @@ export type Database = {
           comment_preview: string | null
           created_at: string
           id: string
-          post_cover_url: string
-          post_id: string
-          post_title: string
+          post_cover_url: string | null
+          post_id: string | null
+          post_title: string | null
           read: boolean
           recipient_uid: string
           type: string
@@ -468,9 +529,9 @@ export type Database = {
           comment_preview?: string | null
           created_at?: string
           id?: string
-          post_cover_url: string
-          post_id: string
-          post_title: string
+          post_cover_url?: string | null
+          post_id?: string | null
+          post_title?: string | null
           read?: boolean
           recipient_uid: string
           type: string
@@ -483,9 +544,9 @@ export type Database = {
           comment_preview?: string | null
           created_at?: string
           id?: string
-          post_cover_url?: string
-          post_id?: string
-          post_title?: string
+          post_cover_url?: string | null
+          post_id?: string | null
+          post_title?: string | null
           read?: boolean
           recipient_uid?: string
           type?: string

@@ -3,7 +3,6 @@ import { ChevronDown, ChevronUp, Clapperboard, Search, Star } from "lucide-react
 import type { Genre, MediaItem, MediaStatus, MediaType } from "../types";
 import { MediaCard } from "./MediaCard";
 import { StatusTabs } from "./StatusTabs";
-import { ResumeSessionCard } from "./ResumeSessionCard";
 
 type SortBy = "recent" | "rating" | "title";
 type ProgFilter = "Todos" | MediaType | "Favoritos";
@@ -34,7 +33,6 @@ interface ProgramasTabProps {
 
 export function ProgramasTab({
   items,
-  genres,
   onStatusChange,
   onRatingChange,
   onEdit,
@@ -70,12 +68,6 @@ export function ProgramasTab({
     userPickedTab.current = true;
     setActiveStatus(status);
   }
-
-  const genreNameById = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const genre of genres) map.set(genre.id, genre.name);
-    return map;
-  }, [genres]);
 
   const counts = useMemo(() => {
     return {
@@ -225,16 +217,6 @@ export function ProgramasTab({
           <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-[#0e0c0a] to-transparent lg:hidden" />
         </div>
       </div>
-
-      {heroItem && (
-        <ResumeSessionCard
-          item={heroItem}
-          genreName={heroItem.genreIds?.[0] ? genreNameById.get(heroItem.genreIds[0]) ?? null : null}
-          onContinue={onEdit}
-          onStatusChange={onStatusChange}
-          onDelete={onDelete}
-        />
-      )}
 
       {seriesInProgress.length > 0 && (
         <section className="space-y-3">

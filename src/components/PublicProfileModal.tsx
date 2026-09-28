@@ -17,6 +17,7 @@ import type { DetailsTarget } from "./MediaDetailsModal";
 import type { FavoriteEntry, Friendship, Genre, PublicProfile } from "../types";
 import { DEFAULT_COVER } from "../types";
 import { useEscapeClose } from "../hooks/useEscapeClose";
+import { fetchFollowCounts } from "../hooks/useFollows";
 
 interface PublicProfileModalProps {
   targetUid: string | null;
@@ -28,6 +29,9 @@ interface PublicProfileModalProps {
   onAccept: (id: string) => void;
   onCancelOrDecline: (id: string) => void;
   onRemove: (id: string) => void;
+  isFollowing: (targetUid: string) => boolean;
+  onFollow: (targetUid: string) => void;
+  onUnfollow: (targetUid: string) => void;
   onClose: () => void;
   onOpenDetails: (target: DetailsTarget) => void;
 }
@@ -138,6 +142,9 @@ export function PublicProfileModal({
   onAccept,
   onCancelOrDecline,
   onRemove,
+  isFollowing,
+  onFollow,
+  onUnfollow,
   onClose,
   onOpenDetails,
 }: PublicProfileModalProps) {
@@ -148,6 +155,7 @@ export function PublicProfileModal({
   const [favoritesLoading, setFavoritesLoading] = useState(true);
   const [genreIds, setGenreIds] = useState<number[]>([]);
   const [genresLoading, setGenresLoading] = useState(true);
+  const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
 
   const friendship = targetUid ? friendshipWith(targetUid) : undefined;
   const isFriend = friendship?.status === "accepted";
@@ -219,6 +227,25 @@ export function PublicProfileModal({
       .finally(() => setFavoritesLoading(false));
   }, [targetUid, isFriend]);
 
+  const followingTarget = targetUid ? isFollowing(targetUid) : false;
+
+  useEffect(() => {
+    if (!targetUid) return;
+    let cancelled = false;
+    fetchFollowCounts(targetUid)
+      .then((counts) => {
+        if (!cancelled) setFollowCounts(counts);
+      })
+      .catch(() => {
+        if (!cancelled) setFollowCounts({ followers: 0, following: 0 });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // followingTarget is in deps so a follow/unfollow from this modal
+    // refreshes the count immediately, without waiting for a realtime round trip.
+  }, [targetUid, followingTarget]);
+
   useEscapeClose(onClose, Boolean(targetUid));
   if (!targetUid) return null;
 
@@ -277,6 +304,30 @@ export function PublicProfileModal({
                   <h2 className="text-lg font-bold text-white">{profile.name}</h2>
                   <p className="text-xs text-stone-500">{profile.handle}</p>
                 </div>
+
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-stone-300">
+                    <strong className="font-semibold text-white">{followCounts.followers}</strong>{" "}
+                    <span className="text-stone-500">seguidores</span>
+                  </span>
+                  <span className="text-stone-300">
+                    <strong className="font-semibold text-white">{followCounts.following}</strong>{" "}
+                    <span className="text-stone-500">seguindo</span>
+                  </span>
+                </div>
+
+                {targetUid !== currentUid && (
+                  <button
+                    onClick={() => (followingTarget ? onUnfollow(targetUid) : onFollow(targetUid))}
+                    className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${
+                      followingTarget
+                        ? "border border-stone-700 text-stone-300 hover:border-red-900 hover:text-[#d97a86]"
+                        : "bg-white text-stone-950 hover:bg-stone-200"
+                    }`}
+                  >
+                    {followingTarget ? "Seguindo" : "Seguir"}
+                  </button>
+                )}
 
                 {targetUid !== currentUid && (
                 <div className="flex flex-wrap items-center justify-center gap-2">

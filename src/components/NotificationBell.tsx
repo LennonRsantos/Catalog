@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AtSign, Bell, Check, Heart, MessageCircle, Rss, User as UserIcon, X } from "lucide-react";
+import { AtSign, Bell, Check, Heart, MessageCircle, Rss, User as UserIcon, UserPlus, X } from "lucide-react";
 import type { AppNotification, Friendship, MediaItem } from "../types";
 import { timeAgo } from "../utils/time";
 import { useEscapeClose } from "../hooks/useEscapeClose";
@@ -12,15 +12,23 @@ interface NotificationBellProps {
   onDeclineFriend: (id: string) => void;
   notifications: AppNotification[];
   onOpenPost: (postId: string, commentId?: string) => void;
+  onOpenProfile: (uid: string) => void;
   onMarkNotificationRead: (id: string) => void;
   onMarkAllNotificationsRead: () => void;
 }
 
-const NOTIFICATION_ICON = { new_post: Rss, like: Heart, comment: MessageCircle, mention: AtSign } as const;
+const NOTIFICATION_ICON = {
+  new_post: Rss,
+  like: Heart,
+  comment: MessageCircle,
+  mention: AtSign,
+  follow: UserPlus,
+} as const;
 
 function notificationText(n: AppNotification): string {
   if (n.type === "new_post") return `${n.actorName} publicou uma nova recomendação.`;
   if (n.type === "like") return `${n.actorName} curtiu sua publicação.`;
+  if (n.type === "follow") return `${n.actorName} passou a seguir você.`;
   if (n.type === "mention") {
     return n.commentId
       ? `${n.actorName} mencionou você em um comentário.`
@@ -37,6 +45,7 @@ export function NotificationBell({
   onDeclineFriend,
   notifications,
   onOpenPost,
+  onOpenProfile,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
 }: NotificationBellProps) {
@@ -47,7 +56,11 @@ export function NotificationBell({
 
   function handleOpenNotification(n: AppNotification) {
     if (!n.read) onMarkNotificationRead(n.id);
-    onOpenPost(n.postId, n.commentId);
+    if (n.type === "follow") {
+      onOpenProfile(n.actorUid);
+    } else if (n.postId) {
+      onOpenPost(n.postId, n.commentId);
+    }
     setOpen(false);
   }
 
