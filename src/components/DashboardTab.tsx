@@ -228,7 +228,10 @@ export function DashboardTab({ items, genres }: DashboardTabProps) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">Estatísticas</h1>
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+          <BarChart3 size={14} className="text-[#a32638]" />
+          Estatísticas
+        </h2>
         <div className="flex overflow-hidden rounded-full border border-stone-800 bg-stone-900/60 text-xs">
           {PERIOD_OPTIONS.map((opt) => (
             <button

@@ -1,14 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Compass, Home, ListVideo, User, Users } from "lucide-react";
+import { Compass, Home, ListVideo, User, Users } from "lucide-react";
 
-export type AppTab = "programas" | "feed" | "amigos" | "explorar" | "dashboard" | "perfil";
+export type AppTab = "programas" | "feed" | "amigos" | "explorar" | "perfil";
 
 export const APP_TABS: { id: AppTab; label: string; icon: LucideIcon }[] = [
   { id: "programas", label: "Programas", icon: ListVideo },
   { id: "feed", label: "Feed", icon: Home },
   { id: "explorar", label: "Explorar", icon: Compass },
   { id: "amigos", label: "Amigos", icon: Users },
-  { id: "dashboard", label: "Estatísticas", icon: BarChart3 },
   { id: "perfil", label: "Perfil", icon: User },
 ];
 

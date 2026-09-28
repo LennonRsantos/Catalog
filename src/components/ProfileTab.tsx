@@ -4,6 +4,7 @@ import type { FavoriteEntry, Genre, MediaItem, User } from "../types";
 import { resolvePrivacy } from "../types";
 import type { DetailsTarget } from "./MediaDetailsModal";
 import { Top10Row } from "./PublicProfileModal";
+import { DashboardTab } from "./DashboardTab";
 import { fetchFollowCounts } from "../hooks/useFollows";
 
 interface ProfileTabProps {
@@ -180,6 +181,8 @@ export function ProfileTab({
           </div>
         </div>
       </div>
+
+      <DashboardTab items={items} genres={genres} />
     </div>
   );
 }

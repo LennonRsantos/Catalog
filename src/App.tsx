@@ -32,7 +32,6 @@ import { FeedTab } from "./components/FeedTab";
 import { FriendsPanel } from "./components/FriendsPanel";
 import { ExplorarTab } from "./components/ExplorarTab";
 import { ProfileTab } from "./components/ProfileTab";
-import { DashboardTab } from "./components/DashboardTab";
 import {
   getDetails,
   getGenres,
@@ -728,8 +727,6 @@ export default function App() {
             onOpenDetails={openDetails}
           />
         )}
-
-        {activeTab === "dashboard" && <DashboardTab items={items} genres={genres} />}
 
         {activeTab === "perfil" && (
           <ProfileTab
