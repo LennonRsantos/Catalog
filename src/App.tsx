@@ -40,6 +40,8 @@ import {
   getRecommendationsByGenres,
   getTrending,
   searchMulti,
+  DEFAULT_DISCOVER_OPTIONS,
+  type DiscoverOptions,
   type TmdbMovie,
 } from "./services/tmdb";
 
@@ -147,8 +149,8 @@ export default function App() {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>([]);
-  const [discoverResults, setDiscoverResults] = useState<TmdbMediaItem[]>([]);
-  const [discoverLoading, setDiscoverLoading] = useState(false);
+  // Lives here (not in ExplorarTab) so filters survive switching tabs.
+  const [discoverOptions, setDiscoverOptions] = useState<DiscoverOptions>(DEFAULT_DISCOVER_OPTIONS);
 
   const isSearching = query.trim().length >= 2;
 
@@ -307,33 +309,6 @@ export default function App() {
       clearTimeout(handle);
     };
   }, [query]);
-
-  useEffect(() => {
-    if (selectedGenreIds.length === 0) {
-      setDiscoverResults([]);
-      return;
-    }
-
-    let cancelled = false;
-    setDiscoverLoading(true);
-    Promise.all([
-      getRecommendationsByGenres(selectedGenreIds, "movie"),
-      getRecommendationsByGenres(selectedGenreIds, "tv"),
-    ])
-      .then(([movies, tvs]) => {
-        if (!cancelled) setDiscoverResults([...movies, ...tvs] as TmdbMediaItem[]);
-      })
-      .catch(() => {
-        if (!cancelled) setDiscoverResults([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDiscoverLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedGenreIds]);
 
   const filteredTmdbResults = useMemo(() => {
     return tmdbResults.filter((item) => {
@@ -711,8 +686,15 @@ export default function App() {
             genres={genres}
             selectedGenreIds={selectedGenreIds}
             onToggleGenre={toggleGenre}
-            discoverResults={discoverResults}
-            discoverLoading={discoverLoading}
+            onClearGenres={() => setSelectedGenreIds([])}
+            discoverOptions={discoverOptions}
+            onDiscoverOptionsChange={(patch) => setDiscoverOptions((prev) => ({ ...prev, ...patch }))}
+            onResetDiscover={() => {
+              setSelectedGenreIds([]);
+              setDiscoverOptions(DEFAULT_DISCOVER_OPTIONS);
+              setTypeFilter("Todos");
+            }}
+            catalogItems={items}
             trending={trending}
             trendingLoading={trendingLoading}
             popular={popular}

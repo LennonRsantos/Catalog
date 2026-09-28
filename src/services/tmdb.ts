@@ -128,6 +128,72 @@ export async function getRecommendationsByGenres(
   return shuffle(withMediaType([...byId.values()], mediaType));
 }
 
+export type DiscoverSort = "popularity" | "rating" | "newest";
+
+export interface DiscoverOptions {
+  sort: DiscoverSort;
+  yearFrom: number | null;
+  yearTo: number | null;
+  minRating: number; // 0-10, TMDB vote_average scale
+  hideOwned: boolean;
+}
+
+export const DEFAULT_DISCOVER_OPTIONS: DiscoverOptions = {
+  sort: "popularity",
+  yearFrom: null,
+  yearTo: null,
+  minRating: 0,
+  hideOwned: false,
+};
+
+export interface DiscoverPage {
+  results: (TMDBMovie & { media_type: "movie" | "tv" })[];
+  totalPages: number;
+  totalResults: number;
+}
+
+/** One page of /discover for a single media type, with the Explorar filters. */
+export async function discoverMedia(
+  mediaType: "movie" | "tv",
+  genreIds: number[],
+  options: DiscoverOptions,
+  page: number
+): Promise<DiscoverPage> {
+  const dateKey = mediaType === "movie" ? "primary_release_date" : "first_air_date";
+  const today = new Date().toISOString().slice(0, 10);
+
+  const params: Record<string, string> = {
+    page: String(page),
+    include_adult: "false",
+    sort_by:
+      options.sort === "rating"
+        ? "vote_average.desc"
+        : options.sort === "newest"
+          ? `${dateKey}.desc`
+          : "popularity.desc",
+    // Top-rated with few votes is noise (a 10.0 from 3 people), so that sort
+    // demands a real audience; the others just skip near-empty entries.
+    "vote_count.gte": options.sort === "rating" ? "300" : "20",
+  };
+  if (genreIds.length > 0) params.with_genres = genreIds.join("|"); // pipe = OR
+  if (options.minRating > 0) params["vote_average.gte"] = String(options.minRating);
+  if (options.yearFrom) params[`${dateKey}.gte`] = `${options.yearFrom}-01-01`;
+  // "Newest" should not surface announced-but-unreleased titles.
+  const upper = options.yearTo ? `${options.yearTo}-12-31` : options.sort === "newest" ? today : null;
+  if (upper) params[`${dateKey}.lte`] = upper;
+
+  const data = await tmdbFetch<{ results: TMDBMovie[]; total_pages: number; total_results: number }>(
+    `/discover/${mediaType}`,
+    params
+  );
+  return {
+    results: withMediaType(data.results, mediaType),
+    // TMDB refuses pages past 500.
+    totalPages: Math.min(data.total_pages, 500),
+    totalResults: data.total_results,
+  };
+}
+
 export interface CastMember {
   id: number;
   name: string;

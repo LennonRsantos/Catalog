@@ -35,8 +35,9 @@ export function SearchBar({
         />
       </div>
 
+      {/* On desktop the type filter lives in the Explorar sidebar. */}
       {showTypeFilter && (
-        <div ref={typeRowRef} className="no-scrollbar flex gap-2 overflow-x-auto">
+        <div ref={typeRowRef} className="no-scrollbar flex gap-2 overflow-x-auto lg:hidden">
           {FILTERS.map((filter) => (
             <button
               key={filter}
