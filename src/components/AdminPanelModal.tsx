@@ -40,6 +40,7 @@ import {
   type AdminUserRow,
   type FeedbackStatus,
 } from "../services/admin";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 interface AdminPanelModalProps {
   open: boolean;
@@ -109,6 +110,7 @@ function ToggleRow({
 }
 
 export function AdminPanelModal({ open, onClose, profile, authUid, onOpenProfile }: AdminPanelModalProps) {
+  const tabsRowRef = useWheelScroll();
   const [section, setSection] = useState<Section>("overview");
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
@@ -277,7 +279,7 @@ export function AdminPanelModal({ open, onClose, profile, authUid, onOpenProfile
           </button>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-b border-stone-800 px-3 py-2 no-scrollbar">
+        <div ref={tabsRowRef} className="flex gap-1 overflow-x-auto border-b border-stone-800 px-3 py-2 no-scrollbar">
           {SECTIONS.map((s) => (
             <button
               key={s.value}

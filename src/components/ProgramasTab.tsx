@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Clapperboard, Search, Star } from "lucide-react
 import type { Genre, MediaItem, MediaStatus, MediaType } from "../types";
 import { MediaCard } from "./MediaCard";
 import { StatusTabs } from "./StatusTabs";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 type SortBy = "recent" | "rating" | "title";
 type ProgFilter = "Todos" | MediaType | "Favoritos";
@@ -41,6 +42,8 @@ export function ProgramasTab({
   onToggleFavorite,
   onMoveFavoriteRank,
 }: ProgramasTabProps) {
+  const chipsRowRef = useWheelScroll();
+  const rowRef = useWheelScroll();
   const [activeStatus, setActiveStatus] = useState<MediaStatus>("Assistindo");
   const [progFilter, setProgFilter] = useState<ProgFilter>("Todos");
   const [query, setQuery] = useState("");
@@ -198,7 +201,7 @@ export function ProgramasTab({
         <StatusTabs active={activeStatus} onChange={selectStatus} counts={counts} />
 
         <div className="relative">
-          <div className="no-scrollbar flex gap-2.5 overflow-x-auto">
+          <div ref={chipsRowRef} className="no-scrollbar flex gap-2.5 overflow-x-auto">
             {filterChips.map(({ key, label }) => (
               <button
                 key={key}
@@ -235,7 +238,7 @@ export function ProgramasTab({
             </button>
           </div>
 
-          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+          <div ref={rowRef} className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
             {seriesInProgress.map((item) => (
               <div key={item.id} className="w-32 shrink-0 sm:w-36">
                 <MediaCard

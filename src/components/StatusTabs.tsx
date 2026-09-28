@@ -1,6 +1,7 @@
 import { Bookmark, Clock, Eye } from "lucide-react";
 import type { MediaStatus } from "../types";
 import { MEDIA_STATUSES } from "../types";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 interface StatusTabsProps {
   active: MediaStatus;
@@ -15,9 +16,10 @@ const ICONS: Record<MediaStatus, React.ComponentType<{ size?: number }>> = {
 };
 
 export function StatusTabs({ active, onChange, counts }: StatusTabsProps) {
+  const tabsRowRef = useWheelScroll();
   return (
     <div className="relative">
-      <div className="no-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-stone-800 bg-stone-900/60 p-1">
+      <div ref={tabsRowRef} className="no-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-stone-800 bg-stone-900/60 p-1">
         {MEDIA_STATUSES.map((status) => {
           const Icon = ICONS[status];
           const isActive = status === active;

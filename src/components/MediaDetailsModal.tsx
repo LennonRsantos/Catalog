@@ -12,6 +12,7 @@ import {
 import type { MediaItem } from "../types";
 import { DEFAULT_COVER } from "../types";
 import { useEscapeClose } from "../hooks/useEscapeClose";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 export interface DetailsTarget {
   tmdbId: number;
@@ -43,6 +44,7 @@ function formatRuntime(details: MediaDetails): string | null {
 }
 
 export function MediaDetailsModal({ target, onClose, onQuickAdd, catalogItem }: MediaDetailsModalProps) {
+  const castRowRef = useWheelScroll();
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,7 +187,7 @@ export function MediaDetailsModal({ target, onClose, onQuickAdd, catalogItem }: 
               {cast.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-white">Elenco</h3>
-                  <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+                  <div ref={castRowRef} className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
                     {cast.map((member) => {
                       const photo = getProfileUrl(member.profile_path);
                       return (

@@ -3,6 +3,7 @@ import type { DetailsTarget } from "./MediaDetailsModal";
 import type { Post } from "../types";
 import type { MentionCandidate } from "../utils/mentions";
 import { PostCard } from "./PostCard";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 interface FeedTabProps {
   uid: string;
@@ -29,6 +30,7 @@ export function FeedTab({
   onOpenProfile,
   onOpenDetails,
 }: FeedTabProps) {
+  const rowRef = useWheelScroll();
   return (
     <div className="space-y-5">
       <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">Feed</h1>
@@ -38,7 +40,7 @@ export function FeedTab({
           <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
             <Flame size={15} className="text-[#a32638]" /> Em Alta Entre Amigos
           </h2>
-          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+          <div ref={rowRef} className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
             {trending.map((t) => (
               <button
                 key={t.tmdbId}

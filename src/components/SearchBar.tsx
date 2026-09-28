@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import type { MediaType } from "../types";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 interface SearchBarProps {
   query: string;
@@ -18,6 +19,7 @@ export function SearchBar({
   onTypeFilterChange,
   showTypeFilter = true,
 }: SearchBarProps) {
+  const typeRowRef = useWheelScroll();
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="relative flex-1">
@@ -34,7 +36,7 @@ export function SearchBar({
       </div>
 
       {showTypeFilter && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+        <div ref={typeRowRef} className="no-scrollbar flex gap-2 overflow-x-auto">
           {FILTERS.map((filter) => (
             <button
               key={filter}

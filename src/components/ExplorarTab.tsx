@@ -1,5 +1,6 @@
-import { ChevronLeft, ChevronRight, Clapperboard, Flame, Loader2, Sparkles, Tv } from "lucide-react";
-import { useRef } from "react";
+import { Clapperboard, Flame, Loader2, Sparkles, Tv } from "lucide-react";
+import { useCallback, useRef } from "react";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 import type { Genre, MediaType } from "../types";
 import type { TmdbMovie } from "../services/tmdb";
 import { SearchBar } from "./SearchBar";
@@ -78,14 +79,17 @@ export function ExplorarTab({
   const showMovieRow = typeFilter !== "Série" && hasMovieFavorites;
   const showSeriesRow = typeFilter !== "Filme" && hasSeriesFavorites;
 
-  const genreScrollRef = useRef<HTMLDivElement>(null);
+  const genreScrollRef = useRef<HTMLDivElement | null>(null);
+  const genreWheelRef = useWheelScroll();
+  // Drag reads genreScrollRef; the wheel hook needs its own callback ref.
+  const setGenreRow = useCallback(
+    (el: HTMLDivElement | null) => {
+      genreScrollRef.current = el;
+      return genreWheelRef(el);
+    },
+    [genreWheelRef]
+  );
   const drag = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
-
-  function scrollGenres(direction: "left" | "right") {
-    const el = genreScrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: el.clientWidth * 0.8 * (direction === "left" ? -1 : 1), behavior: "smooth" });
-  }
 
   function handleGenreMouseDown(e: React.MouseEvent) {
     const el = genreScrollRef.current;
@@ -119,50 +123,30 @@ export function ExplorarTab({
         onTypeFilterChange={onTypeFilterChange}
       />
 
-      <div className="group/genres relative">
-        <button
-          type="button"
-          aria-label="Rolar categorias para a esquerda"
-          onClick={() => scrollGenres("left")}
-          className="absolute left-0 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-black/70 p-1.5 text-white opacity-0 transition hover:bg-black/90 group-hover/genres:opacity-100 sm:block"
-        >
-          <ChevronLeft size={16} />
-        </button>
-
-        <div
-          ref={genreScrollRef}
-          onMouseDown={handleGenreMouseDown}
-          onMouseMove={handleGenreMouseMove}
-          onMouseUp={stopGenreDrag}
-          onMouseLeave={stopGenreDrag}
-          className="no-scrollbar flex cursor-grab gap-2.5 overflow-x-auto scroll-smooth select-none active:cursor-grabbing"
-        >
-          {genres.map((genre) => {
-            const selected = selectedGenreIds.includes(genre.id);
-            return (
-              <button
-                key={genre.id}
-                onClick={() => onToggleGenre(genre.id)}
-                className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-xs font-medium transition ${
-                  selected
-                    ? "border-[#a32638] bg-[#a32638] text-white"
-                    : "border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:text-white"
-                }`}
-              >
-                {genre.name}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          aria-label="Rolar categorias para a direita"
-          onClick={() => scrollGenres("right")}
-          className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-black/70 p-1.5 text-white opacity-0 transition hover:bg-black/90 group-hover/genres:opacity-100 sm:block"
-        >
-          <ChevronRight size={16} />
-        </button>
+      <div
+        ref={setGenreRow}
+        onMouseDown={handleGenreMouseDown}
+        onMouseMove={handleGenreMouseMove}
+        onMouseUp={stopGenreDrag}
+        onMouseLeave={stopGenreDrag}
+        className="no-scrollbar flex cursor-grab gap-2.5 overflow-x-auto select-none active:cursor-grabbing"
+      >
+        {genres.map((genre) => {
+          const selected = selectedGenreIds.includes(genre.id);
+          return (
+            <button
+              key={genre.id}
+              onClick={() => onToggleGenre(genre.id)}
+              className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-xs font-medium transition ${
+                selected
+                  ? "border-[#a32638] bg-[#a32638] text-white"
+                  : "border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:text-white"
+              }`}
+            >
+              {genre.name}
+            </button>
+          );
+        })}
       </div>
 
       {isSearching ? (

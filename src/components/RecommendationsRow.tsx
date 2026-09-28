@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Sparkles } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 import type { TmdbMovie } from "../services/tmdb";
 import { TmdbResultCard } from "./TmdbResultCard";
 
@@ -22,57 +22,7 @@ export function RecommendationsRow({
   onAdd,
   onOpenDetails,
 }: RecommendationsRowProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Scroll position this row is easing towards. Kept separate from the
-  // element's actual scrollLeft so rapid wheel ticks accumulate into one
-  // target instead of each restarting a fresh scroll — that restart-fighting
-  // is what made relying on CSS scroll-behavior: smooth feel laggy/jerky.
-  const targetLeft = useRef(0);
-  const animating = useRef(false);
-
-  // Lets the mouse wheel drive this row's horizontal scroll instead of the
-  // page's vertical one, replacing the old hover arrow buttons. Needs a
-  // native (non-React) listener with passive: false — React's synthetic
-  // onWheel attaches passively, so calling preventDefault() there is
-  // silently ignored and the page would scroll vertically underneath.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const SPEED = 2.2; // wheel delta multiplier — "levemente mais rápido"
-    const EASE = 0.22; // per-frame catch-up fraction — higher = snappier
-
-    function step() {
-      const el2 = scrollRef.current;
-      if (!el2) {
-        animating.current = false;
-        return;
-      }
-      const diff = targetLeft.current - el2.scrollLeft;
-      if (Math.abs(diff) < 0.5) {
-        el2.scrollLeft = targetLeft.current;
-        animating.current = false;
-        return;
-      }
-      el2.scrollLeft += diff * EASE;
-      requestAnimationFrame(step);
-    }
-
-    function handleWheel(e: WheelEvent) {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      e.preventDefault();
-      if (!animating.current) targetLeft.current = el!.scrollLeft;
-      const max = el!.scrollWidth - el!.clientWidth;
-      targetLeft.current = Math.min(Math.max(targetLeft.current + e.deltaY * SPEED, 0), max);
-      if (!animating.current) {
-        animating.current = true;
-        requestAnimationFrame(step);
-      }
-    }
-
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, []);
+  const scrollRef = useWheelScroll();
 
   if (!loading && items.length === 0) return null;
 

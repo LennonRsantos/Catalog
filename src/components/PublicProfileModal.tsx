@@ -18,6 +18,7 @@ import type { FavoriteEntry, Friendship, Genre, PublicProfile } from "../types";
 import { DEFAULT_COVER } from "../types";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { fetchFollowCounts } from "../hooks/useFollows";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 
 interface PublicProfileModalProps {
   targetUid: string | null;
@@ -83,6 +84,7 @@ export function Top10Row({
   emptyMessage: string;
   onOpenDetails: (target: DetailsTarget) => void;
 }) {
+  const rowRef = useWheelScroll();
   return (
     <section className="space-y-2.5">
       <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
@@ -96,7 +98,7 @@ export function Top10Row({
         </p>
       ) : (
         <div className="relative">
-          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+          <div ref={rowRef} className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
             {entries.map((entry, i) => (
               <button
                 key={entry.id}
