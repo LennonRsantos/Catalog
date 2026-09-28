@@ -576,7 +576,7 @@ export default function App() {
   }
 
   if (!profile || !authUser) {
-    return <AuthScreen backdropPath={trending[0]?.backdrop_path ?? null} />;
+    return <AuthScreen trending={trending} />;
   }
 
   if (profile.status === "suspended") {

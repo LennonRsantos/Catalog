@@ -120,3 +120,25 @@ textarea {
   color: #f5f1eb;
   opacity: 1;
 }
+
+/* Login screen: slow drift on the showcase backdrop, and a short entrance
+   when the form switches between Entrar / Criar conta / Redefinir. */
+@keyframes auth-drift {
+  from {
+    transform: scale(1.04) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.12) translate3d(-2%, -1%, 0);
+  }
+}
+
+@keyframes auth-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
