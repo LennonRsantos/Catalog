@@ -70,7 +70,7 @@ async function fetchTop10(uid: string, type: "Filme" | "Série"): Promise<Favori
   return entries.slice(0, 10);
 }
 
-function Top10Row({
+export function Top10Row({
   icon: Icon,
   title,
   entries,
@@ -95,37 +95,41 @@ function Top10Row({
           {emptyMessage}
         </p>
       ) : (
-        <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
-          {entries.map((entry, i) => (
-            <button
-              key={entry.id}
-              onClick={() =>
-                entry.tmdbId && onOpenDetails({ tmdbId: entry.tmdbId, mediaType: entry.mediaType })
-              }
-              disabled={!entry.tmdbId}
-              className="w-24 shrink-0 text-left sm:w-28"
-            >
-              <div className="relative overflow-hidden rounded-lg">
-                <img
-                  src={entry.coverUrl}
-                  alt={entry.title}
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = DEFAULT_COVER;
-                  }}
-                  className="aspect-2/3 w-full object-cover"
-                />
-                <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 text-[10px] font-bold text-white backdrop-blur">
-                  {i + 1}º
-                </span>
-                <span className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded-full bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-[#d9a441] backdrop-blur">
-                  <Star size={9} className="fill-[#d9a441]" /> {entry.rating}
-                </span>
-              </div>
-              <p className="mt-1 truncate text-xs text-stone-300">{entry.title}</p>
-            </button>
-          ))}
+        <div className="relative">
+          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
+            {entries.map((entry, i) => (
+              <button
+                key={entry.id}
+                onClick={() =>
+                  entry.tmdbId && onOpenDetails({ tmdbId: entry.tmdbId, mediaType: entry.mediaType })
+                }
+                disabled={!entry.tmdbId}
+                className="w-24 shrink-0 text-left sm:w-28"
+              >
+                <div className="relative overflow-hidden rounded-lg">
+                  <img
+                    src={entry.coverUrl}
+                    alt={entry.title}
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = DEFAULT_COVER;
+                    }}
+                    className="aspect-2/3 w-full object-cover"
+                  />
+                  <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 text-[10px] font-bold text-white backdrop-blur">
+                    {i + 1}º
+                  </span>
+                  <span className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded-full bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-[#d9a441] backdrop-blur">
+                    <Star size={9} className="fill-[#d9a441]" /> {entry.rating}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-xs text-stone-300">{entry.title}</p>
+              </button>
+            ))}
+          </div>
+          {/* Signals "more to scroll" instead of the last card looking hard-clipped. */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-stone-900 to-transparent" />
         </div>
       )}
     </section>

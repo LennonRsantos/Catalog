@@ -31,6 +31,7 @@ import { ProgramasTab } from "./components/ProgramasTab";
 import { FeedTab } from "./components/FeedTab";
 import { FriendsPanel } from "./components/FriendsPanel";
 import { ExplorarTab } from "./components/ExplorarTab";
+import { ProfileTab } from "./components/ProfileTab";
 import { DashboardTab } from "./components/DashboardTab";
 import {
   getDetails,
@@ -608,7 +609,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0e0c0a] pb-20 sm:pb-8">
+    <div className="min-h-screen bg-[#0e0c0a] pb-20 lg:pb-8">
       <header className="sticky top-0 z-30 border-b border-stone-900 bg-[#0e0c0a]/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
@@ -729,6 +730,19 @@ export default function App() {
         )}
 
         {activeTab === "dashboard" && <DashboardTab items={items} genres={genres} />}
+
+        {activeTab === "perfil" && (
+          <ProfileTab
+            uid={authUser.uid}
+            profile={profile}
+            items={items}
+            genres={genres}
+            onOpenDetails={setDetailsTarget}
+            onOpenPersonalData={() => setPersonalDataModalOpen(true)}
+            onOpenGenres={() => setGenresModalOpen(true)}
+            onOpenPrivacy={() => setPrivacyModalOpen(true)}
+          />
+        )}
       </main>
 
       <MobileTabBar active={activeTab} onChange={setActiveTab} />
