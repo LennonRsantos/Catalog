@@ -242,9 +242,21 @@ export function PublicProfileModal({
     return () => {
       cancelled = true;
     };
-    // followingTarget is in deps so a follow/unfollow from this modal
-    // refreshes the count immediately, without waiting for a realtime round trip.
-  }, [targetUid, followingTarget]);
+  }, [targetUid]);
+
+  // Bumps the shown count instantly instead of waiting on a fetchFollowCounts
+  // round trip — onFollow/onUnfollow themselves already update isFollowing
+  // optimistically (see useFollows), this mirrors that for the counter.
+  function handleFollowClick() {
+    if (!targetUid) return;
+    if (followingTarget) {
+      setFollowCounts((c) => ({ ...c, followers: Math.max(0, c.followers - 1) }));
+      onUnfollow(targetUid);
+    } else {
+      setFollowCounts((c) => ({ ...c, followers: c.followers + 1 }));
+      onFollow(targetUid);
+    }
+  }
 
   useEscapeClose(onClose, Boolean(targetUid));
   if (!targetUid) return null;
@@ -318,7 +330,7 @@ export function PublicProfileModal({
 
                 {targetUid !== currentUid && (
                   <button
-                    onClick={() => (followingTarget ? onUnfollow(targetUid) : onFollow(targetUid))}
+                    onClick={handleFollowClick}
                     className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${
                       followingTarget
                         ? "border border-stone-700 text-stone-300 hover:border-red-900 hover:text-[#d97a86]"

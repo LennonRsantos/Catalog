@@ -47,16 +47,36 @@ export function useFollows(uid: string | null) {
 
   const isFollowing = useMemo(() => (targetUid: string) => followingUids.has(targetUid), [followingUids]);
 
+  // Updates followingUids immediately instead of waiting on the realtime
+  // round trip from the subscription above — that round trip is what made
+  // the follow button/count feel laggy. The realtime refetch still runs
+  // afterwards and simply confirms the same state.
   async function follow(targetUid: string) {
     if (!uid || uid === targetUid) return;
+    setFollowingUids((prev) => new Set(prev).add(targetUid));
     const { error } = await supabase.from("follows").insert({ follower_uid: uid, followed_uid: targetUid });
-    if (error) throw error;
+    if (error) {
+      setFollowingUids((prev) => {
+        const next = new Set(prev);
+        next.delete(targetUid);
+        return next;
+      });
+      throw error;
+    }
   }
 
   async function unfollow(targetUid: string) {
     if (!uid) return;
+    setFollowingUids((prev) => {
+      const next = new Set(prev);
+      next.delete(targetUid);
+      return next;
+    });
     const { error } = await supabase.from("follows").delete().eq("follower_uid", uid).eq("followed_uid", targetUid);
-    if (error) throw error;
+    if (error) {
+      setFollowingUids((prev) => new Set(prev).add(targetUid));
+      throw error;
+    }
   }
 
   return { followingUids, isFollowing, follow, unfollow, loading };
